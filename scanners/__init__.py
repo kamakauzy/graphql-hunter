@@ -1,0 +1,1 @@
+# GraphQL Hunter Scanners
