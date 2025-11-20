@@ -357,7 +357,14 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎯 GraphQL Hunter</h1>
+            <pre style="color: white; line-height: 1.2; margin-bottom: 10px; font-size: 0.5em;">
+   ____                 _      ___  _       _   _             _            
+  / ___|_ __ __ _ _ __ | |__  / _ \| |     | | | |_   _ _ __ | |_ ___ _ __ 
+ | |  _| '__/ _` | '_ \| '_ \| | | | |     | |_| | | | | '_ \| __/ _ \ '__|
+ | |_| | | | (_| | |_) | | | | |_| | |___  |  _  | |_| | | | | ||  __/ |   
+  \____|_|  \__,_| .__/|_| |_|\__\_\_____| |_| |_|\__,_|_| |_|\__\___|_|   
+                 |_|                                                        
+            </pre>
             <div class="subtitle">Security Assessment Report</div>
         </div>
         
@@ -369,11 +376,11 @@
                 </div>
                 <div class="metadata-item">
                     <label>Scan Profile</label>
-                    <value>STANDARD</value>
+                    <value>DEEP</value>
                 </div>
                 <div class="metadata-item">
                     <label>Scan Date</label>
-                    <value>2025-11-20T20:29:01.201663</value>
+                    <value>2025-11-20T20:56:00.578653</value>
                 </div>
                 <div class="metadata-item">
                     <label>Safe Mode</label>
@@ -390,11 +397,11 @@
                     <div class="stat-label">Critical</div>
                 </div>
                 <div class="stat-card high">
-                    <div class="stat-number">0</div>
+                    <div class="stat-number">2</div>
                     <div class="stat-label">High</div>
                 </div>
                 <div class="stat-card medium">
-                    <div class="stat-number">0</div>
+                    <div class="stat-number">3</div>
                     <div class="stat-label">Medium</div>
                 </div>
                 <div class="stat-card low">
@@ -402,21 +409,74 @@
                     <div class="stat-label">Low</div>
                 </div>
                 <div class="stat-card info">
-                    <div class="stat-number">0</div>
+                    <div class="stat-number">3</div>
                     <div class="stat-label">Info</div>
                 </div>
             </div>
             <p style="text-align: center; margin-top: 20px;">
-                <span class="risk-badge risk-unknown">UNKNOWN Risk</span>
+                <span class="risk-badge risk-high">HIGH Risk</span>
             </p>
             <p style="text-align: center; margin-top: 15px; color: #666;">
-                Total Findings: <strong>0</strong>
+                Total Findings: <strong>8</strong>
             </p>
         </div>
         
         <div class="findings">
             <h2>🔍 Detailed Findings</h2>
             
+            <div class="finding high">
+                <div class="finding-header">
+                    <div class="finding-title">Unauthenticated Introspection Access</div>
+                    <div class="severity-badge severity-high">HIGH</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>The GraphQL endpoint allows full introspection queries without authentication. This enables anonymous attackers to discover the entire API structure.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>Unauthenticated introspection allows anyone to map the complete API surface, including potentially sensitive queries and mutations. This significantly aids in reconnaissance and attack planning.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Require authentication for introspection queries. Implement authentication middleware that validates credentials before processing introspection requests.</p>
+                </div>
+                
+                <div class="evidence"><pre>unauthenticated_introspection: SUCCESS</pre></div>
+                <div class="cwe-badge">CWE-306: Missing Authentication for Critical Function</div>
+            </div>
+            
+
+            <div class="finding high">
+                <div class="finding-header">
+                    <div class="finding-title">Field Aliasing Abuse Possible</div>
+                    <div class="severity-badge severity-high">HIGH</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>The server accepted a query with 100 field aliases and took 0.66 seconds to process.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>Field aliasing can be exploited to multiply the cost of a single query by requesting the same expensive field multiple times under different aliases. This can lead to severe resource exhaustion and DoS.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Implement query cost analysis that counts aliased fields. Each alias should contribute to the query cost. Consider limiting the total number of fields (including aliases) in a single query.</p>
+                </div>
+                
+                <div class="evidence"><pre>alias_count: 100
+response_time: 0.6620030403137207</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...</pre></div></div>
+                <div class="cwe-badge">CWE-400: Uncontrolled Resource Consumption</div>
+            </div>
+            
+
             <div class="finding medium">
                 <div class="finding-header">
                     <div class="finding-title">GraphQL Introspection Enabled</div>
@@ -440,6 +500,58 @@
                 
                 <div class="evidence"><pre>introspection_response: Full schema retrieved successfully</pre></div>
                 <div class="cwe-badge">CWE-200: Exposure of Sensitive Information to an Unauthorized Actor</div>
+            </div>
+            
+
+            <div class="finding medium">
+                <div class="finding-header">
+                    <div class="finding-title">API Accessible Without Authentication</div>
+                    <div class="severity-badge severity-medium">MEDIUM</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>The GraphQL endpoint responds to queries without requiring authentication.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>If the API contains sensitive data or operations, lack of authentication allows unauthorized access. This depends on what data is actually exposed.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Implement authentication requirements for the GraphQL endpoint. Use middleware to validate authentication tokens before processing queries.</p>
+                </div>
+                
+                <div class="evidence"><pre>unauthenticated_query: SUCCESS</pre></div>
+                <div class="cwe-badge">CWE-306: Missing Authentication for Critical Function</div>
+            </div>
+            
+
+            <div class="finding medium">
+                <div class="finding-header">
+                    <div class="finding-title">No Query Complexity Limit Detected</div>
+                    <div class="severity-badge severity-medium">MEDIUM</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>The server accepted a highly complex query without error, suggesting complexity analysis may not be implemented.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>Without complexity limits, attackers can craft expensive queries that consume excessive server resources.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Implement query complexity analysis. Tools like graphql-query-complexity can help. Set appropriate complexity thresholds.</p>
+                </div>
+                
+                <div class="evidence"><pre>complex_query_accepted: True</pre></div>
+                <div class="cwe-badge">CWE-400: Uncontrolled Resource Consumption</div>
             </div>
             
 
@@ -470,58 +582,6 @@ sample_fields: [{&#x27;type&#x27;: &#x27;Country&#x27;, &#x27;field&#x27;: &#x27
             </div>
             
 
-            <div class="finding high">
-                <div class="finding-header">
-                    <div class="finding-title">Unauthenticated Introspection Access</div>
-                    <div class="severity-badge severity-high">HIGH</div>
-                </div>
-                
-                <div class="finding-section">
-                    <h3>Description</h3>
-                    <p>The GraphQL endpoint allows full introspection queries without authentication. This enables anonymous attackers to discover the entire API structure.</p>
-                </div>
-                
-                <div class="finding-section">
-                    <h3>Impact</h3>
-                    <p>Unauthenticated introspection allows anyone to map the complete API surface, including potentially sensitive queries and mutations. This significantly aids in reconnaissance and attack planning.</p>
-                </div>
-                
-                <div class="finding-section">
-                    <h3>Remediation</h3>
-                    <p>Require authentication for introspection queries. Implement authentication middleware that validates credentials before processing introspection requests.</p>
-                </div>
-                
-                <div class="evidence"><pre>unauthenticated_introspection: SUCCESS</pre></div>
-                <div class="cwe-badge">CWE-306: Missing Authentication for Critical Function</div>
-            </div>
-            
-
-            <div class="finding medium">
-                <div class="finding-header">
-                    <div class="finding-title">API Accessible Without Authentication</div>
-                    <div class="severity-badge severity-medium">MEDIUM</div>
-                </div>
-                
-                <div class="finding-section">
-                    <h3>Description</h3>
-                    <p>The GraphQL endpoint responds to queries without requiring authentication.</p>
-                </div>
-                
-                <div class="finding-section">
-                    <h3>Impact</h3>
-                    <p>If the API contains sensitive data or operations, lack of authentication allows unauthorized access. This depends on what data is actually exposed.</p>
-                </div>
-                
-                <div class="finding-section">
-                    <h3>Remediation</h3>
-                    <p>Implement authentication requirements for the GraphQL endpoint. Use middleware to validate authentication tokens before processing queries.</p>
-                </div>
-                
-                <div class="evidence"><pre>unauthenticated_query: SUCCESS</pre></div>
-                <div class="cwe-badge">CWE-306: Missing Authentication for Critical Function</div>
-            </div>
-            
-
             <div class="finding info">
                 <div class="finding-header">
                     <div class="finding-title">Query Depth Limit Enforced</div>
@@ -545,32 +605,6 @@ sample_fields: [{&#x27;type&#x27;: &#x27;Country&#x27;, &#x27;field&#x27;: &#x27
                 
                 <div class="evidence"><pre>depth_limit: 5</pre></div>
                 
-            </div>
-            
-
-            <div class="finding medium">
-                <div class="finding-header">
-                    <div class="finding-title">No Query Complexity Limit Detected</div>
-                    <div class="severity-badge severity-medium">MEDIUM</div>
-                </div>
-                
-                <div class="finding-section">
-                    <h3>Description</h3>
-                    <p>The server accepted a highly complex query without error, suggesting complexity analysis may not be implemented.</p>
-                </div>
-                
-                <div class="finding-section">
-                    <h3>Impact</h3>
-                    <p>Without complexity limits, attackers can craft expensive queries that consume excessive server resources.</p>
-                </div>
-                
-                <div class="finding-section">
-                    <h3>Remediation</h3>
-                    <p>Implement query complexity analysis. Tools like graphql-query-complexity can help. Set appropriate complexity thresholds.</p>
-                </div>
-                
-                <div class="evidence"><pre>complex_query_accepted: True</pre></div>
-                <div class="cwe-badge">CWE-400: Uncontrolled Resource Consumption</div>
             </div>
             
 
@@ -603,7 +637,7 @@ sample_fields: [{&#x27;type&#x27;: &#x27;Country&#x27;, &#x27;field&#x27;: &#x27
         
         <div class="footer">
             <p><strong>GraphQL Hunter v1.0</strong></p>
-            <p>Generated on 2025-11-20 14:29:12</p>
+            <p>Generated on 2025-11-20 14:56:15</p>
             <p>For questions or support, contact <a href="mailto:brad@securit360.com">brad@securit360.com</a></p>
             <p style="margin-top: 15px; font-size: 0.9em; opacity: 0.8;">
                 This report is for authorized security testing only. Always obtain proper authorization before testing.

@@ -61,6 +61,10 @@ Thumbs.db
 results/
 reports/
 
+# Example reports should be tracked
+!examples/*.json
+!examples/*.html
+
 # Local config
 config/local.yaml
 *.local.yaml

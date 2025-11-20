@@ -499,6 +499,14 @@ Always verify findings manually before freaking out.
 
 *What success looks like (or doesn't)*
 
+Check out the example reports in the `examples/` directory:
+- **[sample-report.json](examples/sample-report.json)** - Machine-readable JSON report
+- **[sample-report.html](examples/sample-report.html)** - Beautiful HTML report (open in browser)
+
+These were generated from a real scan showing 8 findings including 2 HIGH severity issues.
+
+### Terminal Output
+
 ```
 ===============================================================
                                                                
