@@ -3,7 +3,7 @@
     "target": "http://localhost:5013/graphql",
     "profile": "deep",
     "safe_mode": true,
-    "timestamp": "2025-11-20T22:33:43.606083"
+    "timestamp": "2025-11-20T22:56:46.240377"
   },
   "findings": [
     {
@@ -49,7 +49,10 @@
             "keyword": "token"
           }
         ]
-      }
+      },
+      "poc": "{ systemDebug }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"{ systemDebug }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 28\n\n{\"query\": \"{ systemDebug }\"}"
     },
     {
       "title": "Deprecated Fields Found",
@@ -75,7 +78,10 @@
             "reason": "Use `locations`."
           }
         ]
-      }
+      },
+      "poc": "{ __schema { types { fields { name isDeprecated deprecationReason } } } }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"{ __schema { types { fields { name isDeprecated deprecationReason } } } }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 86\n\n{\"query\": \"{ __schema { types { fields { name isDeprecated deprecationReason } } } }\"}"
     },
     {
       "title": "Fields With Arguments Identified",
@@ -217,7 +223,10 @@
             ]
           }
         ]
-      }
+      },
+      "poc": "{ __schema { types { fields { name args { name type { name } } } } } }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"{ __schema { types { fields { name args { name type { name } } } } } }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 83\n\n{\"query\": \"{ __schema { types { fields { name args { name type { name } } } } } }\"}"
     },
     {
       "title": "Mutations Available",
@@ -227,7 +236,10 @@
       "remediation": "Ensure all mutations require proper authentication and authorization. Implement rate limiting on sensitive mutations.",
       "evidence": {
         "mutation_count": 7
-      }
+      },
+      "poc": "{ __schema { mutationType { fields { name } } } }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"{ __schema { mutationType { fields { name } } } }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 62\n\n{\"query\": \"{ __schema { mutationType { fields { name } } } }\"}"
     },
     {
       "title": "Subscriptions Available",
@@ -237,7 +249,10 @@
       "remediation": "Implement connection limits and rate limiting for subscriptions. Ensure proper authentication for subscription endpoints.",
       "evidence": {
         "subscription_count": 1
-      }
+      },
+      "poc": "{ __schema { subscriptionType { fields { name } } } }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"{ __schema { subscriptionType { fields { name } } } }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 66\n\n{\"query\": \"{ __schema { subscriptionType { fields { name } } } }\"}"
     },
     {
       "title": "Unauthenticated Introspection Access",
@@ -278,7 +293,10 @@
           "users",
           "deleteAllPastes"
         ]
-      }
+      },
+      "poc": "{ users }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"{ users }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 22\n\n{\"query\": \"{ users }\"}"
     },
     {
       "title": "Sensitive Mutations Discovered",
@@ -292,6 +310,9 @@
           "createUser"
         ]
       },
+      "poc": "mutation { deletePaste { __typename } }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"mutation { deletePaste { __typename } }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 52\n\n{\"query\": \"mutation { deletePaste { __typename } }\"}",
       "cwe": "CWE-862: Missing Authorization"
     },
     {
@@ -304,18 +325,20 @@
         "batch_size_tested": 3,
         "successful_queries": 3
       },
-      "poc": "Send array of queries: [{'query': '...'}, {'query': '...'}] to endpoint",
+      "poc": "[{\"query\":\"{ __typename }\"},{\"query\":\"{ __typename }\"},{\"query\":\"{ __typename }\"}]",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"[{\\\"query\\\":\\\"{ __typename }\\\"},{\\\"query\\\":\\\"{ __typename }\\\"},{\\\"query\\\":\\\"{ __typename }\\\"}]\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 107\n\n{\"query\": \"[{\\\"query\\\":\\\"{ __typename }\\\"},{\\\"query\\\":\\\"{ __typename }\\\"},{\\\"query\\\":\\\"{ __typename }\\\"}]\"}",
       "cwe": "CWE-400: Uncontrolled Resource Consumption"
     },
     {
       "title": "Field Aliasing Abuse Possible",
       "severity": "HIGH",
-      "description": "The server accepted a query with 100 field aliases and took 0.05 seconds to process.",
+      "description": "The server accepted a query with 100 field aliases and took 0.57 seconds to process.",
       "impact": "Field aliasing can be exploited to multiply the cost of a single query by requesting the same expensive field multiple times under different aliases. This can lead to severe resource exhaustion and DoS.",
       "remediation": "Implement query cost analysis that counts aliased fields. Each alias should contribute to the query cost. Consider limiting the total number of fields (including aliases) in a single query.",
       "evidence": {
         "alias_count": 100,
-        "response_time": 0.04805779457092285
+        "response_time": 0.5676290988922119
       },
       "poc": "Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...",
       "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...\"}'",
@@ -348,6 +371,9 @@
           }
         ]
       },
+      "poc": "mutation { deletePaste { __typename } }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"mutation { deletePaste { __typename } }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 52\n\n{\"query\": \"mutation { deletePaste { __typename } }\"}",
       "cwe": "CWE-862: Missing Authorization"
     },
     {
@@ -359,6 +385,9 @@
       "evidence": {
         "mutation_count": 7
       },
+      "poc": "{ __schema { mutationType { name fields { name } } } }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"{ __schema { mutationType { name fields { name } } } }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 67\n\n{\"query\": \"{ __schema { mutationType { name fields { name } } } }\"}",
       "cwe": "CWE-200: Exposure of Sensitive Information to an Unauthorized Actor"
     },
     {
@@ -386,7 +415,9 @@
           }
         ]
       },
-      "poc": "Test by calling mutations with ID parameters belonging to other users/objects",
+      "poc": "mutation { editPaste(id: 999) { __typename } }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"mutation { editPaste(id: 999) { __typename } }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 59\n\n{\"query\": \"mutation { editPaste(id: 999) { __typename } }\"}",
       "cwe": "CWE-639: Authorization Bypass Through User-Controlled Key"
     }
   ],
