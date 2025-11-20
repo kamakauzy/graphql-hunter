@@ -33,10 +33,12 @@ A comprehensive GraphQL security testing tool that hunts down vulnerabilities in
 *"Friendly" being relative when it's roasting your security posture*
 
 - Colored terminal output (red means panic, green means celebrate)
+- **Beautiful HTML reports** (impress management with gradients!)
+- JSON export (for when you need machine-readable proof)
 - Real-time progress reporting (watch the findings roll in!)
 - Detailed descriptions with CWE references (so you can sound smart in meetings)
 - Severity-based classification (CRITICAL = update your resume)
-- JSON export (for when you need to prove this to management)
+- Print-friendly HTML layouts (for that paper trail)
 
 ### [+] Flexible Configuration
 
@@ -122,6 +124,12 @@ python graphql-hunter.py -u https://api.example.com/graphql -H "X-API-Key: KEY" 
 ```bash
 # Save results to JSON (for posterity and blame assignment)
 python graphql-hunter.py -u https://api.example.com/graphql -o results.json
+
+# Save results to HTML (pretty reports for management)
+python graphql-hunter.py -u https://api.example.com/graphql --html report.html
+
+# Both JSON and HTML (cover all your bases)
+python graphql-hunter.py -u https://api.example.com/graphql -o results.json --html report.html
 
 # Verbose mode (ALL the details, prepare for information overload)
 python graphql-hunter.py -u https://api.example.com/graphql -v
@@ -275,6 +283,7 @@ Scanner Selection:
 
 Output Options:
   -o, --output FILE             Output JSON file path
+  --html FILE                   Output HTML report file path
   -v, --verbose                 Verbose output (show requests/responses)
   --no-color                    Disable colored output
 

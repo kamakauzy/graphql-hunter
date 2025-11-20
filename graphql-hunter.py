@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent / "scanners"))
 
 from graphql_client import GraphQLClient
 from reporter import Reporter
+from html_reporter import HTMLReporter
 from introspection_scanner import IntrospectionScanner
 from info_disclosure_scanner import InfoDisclosureScanner
 from auth_bypass_scanner import AuthBypassScanner
@@ -94,6 +95,7 @@ Examples:
     
     # Output options
     parser.add_argument('-o', '--output', help='Output JSON file path')
+    parser.add_argument('--html', help='Output HTML report file path')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Verbose output (show requests/responses)')
     parser.add_argument('--no-color', action='store_true',
@@ -228,9 +230,27 @@ def main():
             }
             with open(args.output, 'w') as f:
                 json.dump(output_data, f, indent=2)
-            reporter.print_success(f"Results saved to {args.output}")
+            reporter.print_success(f"JSON report saved to {args.output}")
         except Exception as e:
-            reporter.print_error(f"Failed to save output: {e}")
+            reporter.print_error(f"Failed to save JSON: {e}")
+    
+    # Save to HTML if requested
+    if args.html:
+        try:
+            output_data = {
+                'metadata': scan_metadata,
+                'findings': all_findings,
+                'summary': reporter.get_summary_stats(all_findings)
+            }
+            HTMLReporter.generate(
+                output_data['metadata'],
+                output_data['findings'],
+                output_data['summary'],
+                args.html
+            )
+            reporter.print_success(f"HTML report saved to {args.html}")
+        except Exception as e:
+            reporter.print_error(f"Failed to save HTML: {e}")
     
     # Return exit code based on findings
     critical_count = sum(1 for f in all_findings if f.get('severity') == 'CRITICAL')
