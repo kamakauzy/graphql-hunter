@@ -3,7 +3,7 @@
     "target": "http://localhost:5013/graphql",
     "profile": "deep",
     "safe_mode": true,
-    "timestamp": "2025-11-20T22:23:30.880862"
+    "timestamp": "2025-11-20T22:33:43.606083"
   },
   "findings": [
     {
@@ -248,6 +248,9 @@
       "evidence": {
         "unauthenticated_introspection": "SUCCESS"
       },
+      "poc": "{ __schema { queryType { name } } }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"{ __schema { queryType { name } } }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 48\n\n{\"query\": \"{ __schema { queryType { name } } }\"}",
       "cwe": "CWE-306: Missing Authentication for Critical Function"
     },
     {
@@ -259,6 +262,9 @@
       "evidence": {
         "unauthenticated_query": "SUCCESS"
       },
+      "poc": "{ __typename }",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"{ __typename }\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 27\n\n{\"query\": \"{ __typename }\"}",
       "cwe": "CWE-306: Missing Authentication for Critical Function"
     },
     {
@@ -304,14 +310,16 @@
     {
       "title": "Field Aliasing Abuse Possible",
       "severity": "HIGH",
-      "description": "The server accepted a query with 100 field aliases and took 0.06 seconds to process.",
+      "description": "The server accepted a query with 100 field aliases and took 0.05 seconds to process.",
       "impact": "Field aliasing can be exploited to multiply the cost of a single query by requesting the same expensive field multiple times under different aliases. This can lead to severe resource exhaustion and DoS.",
       "remediation": "Implement query cost analysis that counts aliased fields. Each alias should contribute to the query cost. Consider limiting the total number of fields (including aliases) in a single query.",
       "evidence": {
         "alias_count": 100,
-        "response_time": 0.06441998481750488
+        "response_time": 0.04805779457092285
       },
       "poc": "Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...",
+      "curl_command": "curl -X POST http://localhost:5013/graphql \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"query\":\"Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...\"}'",
+      "burp_request": "POST /graphql HTTP/1.1\nHost: localhost:5013\nContent-Type: application/json\nContent-Length: 240\n\n{\"query\": \"Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...\"}",
       "cwe": "CWE-400: Uncontrolled Resource Consumption"
     },
     {

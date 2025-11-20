@@ -409,7 +409,7 @@
                 </div>
                 <div class="metadata-item">
                     <label>Scan Date</label>
-                    <value>2025-11-20T22:23:30.880862</value>
+                    <value>2025-11-20T22:33:43.606083</value>
                 </div>
                 <div class="metadata-item">
                     <label>Safe Mode</label>
@@ -474,7 +474,14 @@
                     <p>Require authentication for introspection queries. Implement authentication middleware that validates credentials before processing introspection requests.</p>
                 </div>
                 
-                <div class="evidence"><pre>unauthenticated_introspection: SUCCESS</pre></div>
+                <div class="evidence"><pre>unauthenticated_introspection: SUCCESS</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>{ __schema { queryType { name } } }</pre></div></div><div class="finding-section"><h3>🔧 Exploit with cURL</h3><div class="evidence curl-command"><pre>curl -X POST http://localhost:5013/graphql \
+  -H &quot;Content-Type: application/json&quot; \
+  -d &#x27;{&quot;query&quot;:&quot;{ __schema { queryType { name } } }&quot;}&#x27;</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div><div class="finding-section"><h3>🔥 Burp Suite Request</h3><div class="evidence burp-request"><pre>POST /graphql HTTP/1.1
+Host: localhost:5013
+Content-Type: application/json
+Content-Length: 48
+
+{&quot;query&quot;: &quot;{ __schema { queryType { name } } }&quot;}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>
                 <div class="cwe-badge">CWE-306: Missing Authentication for Critical Function</div>
             </div>
             
@@ -487,7 +494,7 @@
                 
                 <div class="finding-section">
                     <h3>Description</h3>
-                    <p>The server accepted a query with 100 field aliases and took 0.06 seconds to process.</p>
+                    <p>The server accepted a query with 100 field aliases and took 0.05 seconds to process.</p>
                 </div>
                 
                 <div class="finding-section">
@@ -501,7 +508,14 @@
                 </div>
                 
                 <div class="evidence"><pre>alias_count: 100
-response_time: 0.06441998481750488</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...</pre></div></div>
+response_time: 0.04805779457092285</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...</pre></div></div><div class="finding-section"><h3>🔧 Exploit with cURL</h3><div class="evidence curl-command"><pre>curl -X POST http://localhost:5013/graphql \
+  -H &quot;Content-Type: application/json&quot; \
+  -d &#x27;{&quot;query&quot;:&quot;Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...&quot;}&#x27;</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div><div class="finding-section"><h3>🔥 Burp Suite Request</h3><div class="evidence burp-request"><pre>POST /graphql HTTP/1.1
+Host: localhost:5013
+Content-Type: application/json
+Content-Length: 240
+
+{&quot;query&quot;: &quot;Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...&quot;}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>
                 <div class="cwe-badge">CWE-400: Uncontrolled Resource Consumption</div>
             </div>
             
@@ -586,7 +600,14 @@ Content-Length: 44
                     <p>Implement authentication requirements for the GraphQL endpoint. Use middleware to validate authentication tokens before processing queries.</p>
                 </div>
                 
-                <div class="evidence"><pre>unauthenticated_query: SUCCESS</pre></div>
+                <div class="evidence"><pre>unauthenticated_query: SUCCESS</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>{ __typename }</pre></div></div><div class="finding-section"><h3>🔧 Exploit with cURL</h3><div class="evidence curl-command"><pre>curl -X POST http://localhost:5013/graphql \
+  -H &quot;Content-Type: application/json&quot; \
+  -d &#x27;{&quot;query&quot;:&quot;{ __typename }&quot;}&#x27;</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div><div class="finding-section"><h3>🔥 Burp Suite Request</h3><div class="evidence burp-request"><pre>POST /graphql HTTP/1.1
+Host: localhost:5013
+Content-Type: application/json
+Content-Length: 27
+
+{&quot;query&quot;: &quot;{ __typename }&quot;}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>
                 <div class="cwe-badge">CWE-306: Missing Authentication for Critical Function</div>
             </div>
             
@@ -856,7 +877,7 @@ sample_fields: [{&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;p
         
         <div class="footer">
             <p><strong>GraphQL Hunter v1.0</strong></p>
-            <p>Generated on 2025-11-20 16:23:33</p>
+            <p>Generated on 2025-11-20 16:33:46</p>
             <p>For questions or support, contact <a href="mailto:brad@securit360.com">brad@securit360.com</a></p>
             <p style="margin-top: 15px; font-size: 0.9em; opacity: 0.8;">
                 This report is for authorized security testing only. Always obtain proper authorization before testing.
