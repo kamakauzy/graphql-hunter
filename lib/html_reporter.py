@@ -73,7 +73,7 @@ class HTMLReporter:
         
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #0a0a0a;
             padding: 20px;
             color: #333;
         }}
@@ -88,10 +88,22 @@ class HTMLReporter:
         }}
         
         .header {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #000000;
             color: white;
-            padding: 40px;
+            padding: 20px 40px;
             text-align: center;
+            border-bottom: 4px solid #00ffff;
+            position: relative;
+        }}
+        
+        .header::after {{
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #ff0044 0%, #00ffff 100%);
         }}
         
         .header h1 {{
@@ -103,6 +115,10 @@ class HTMLReporter:
         .header .subtitle {{
             font-size: 1.1em;
             opacity: 0.9;
+            color: #00ffff;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+            margin-top: 10px;
         }}
         
         .metadata {{
@@ -172,28 +188,33 @@ class HTMLReporter:
         }}
         
         .stat-card.critical {{
-            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            background: linear-gradient(135deg, #ff0044 0%, #cc0036 100%);
             color: white;
+            border: 2px solid #ff0044;
         }}
         
         .stat-card.high {{
-            background: linear-gradient(135deg, #ff8a65 0%, #ff7043 100%);
+            background: linear-gradient(135deg, #ff6b00 0%, #ff4400 100%);
             color: white;
+            border: 2px solid #ff6b00;
         }}
         
         .stat-card.medium {{
-            background: linear-gradient(135deg, #ffd54f 0%, #ffb300 100%);
+            background: linear-gradient(135deg, #ffaa00 0%, #ff8800 100%);
             color: white;
+            border: 2px solid #ffaa00;
         }}
         
         .stat-card.low {{
-            background: linear-gradient(135deg, #81c784 0%, #66bb6a 100%);
+            background: linear-gradient(135deg, #00aa44 0%, #008833 100%);
             color: white;
+            border: 2px solid #00aa44;
         }}
         
         .stat-card.info {{
-            background: linear-gradient(135deg, #64b5f6 0%, #42a5f5 100%);
-            color: white;
+            background: linear-gradient(135deg, #00ffff 0%, #00cccc 100%);
+            color: #000;
+            border: 2px solid #00ffff;
         }}
         
         .stat-number {{
@@ -265,23 +286,28 @@ class HTMLReporter:
         }}
         
         .finding.critical {{
-            border-left-color: #ff6b6b;
+            border-left-color: #ff0044;
+            border-left-width: 6px;
         }}
         
         .finding.high {{
-            border-left-color: #ff8a65;
+            border-left-color: #ff6b00;
+            border-left-width: 6px;
         }}
         
         .finding.medium {{
-            border-left-color: #ffd54f;
+            border-left-color: #ffaa00;
+            border-left-width: 6px;
         }}
         
         .finding.low {{
-            border-left-color: #81c784;
+            border-left-color: #00aa44;
+            border-left-width: 6px;
         }}
         
         .finding.info {{
-            border-left-color: #64b5f6;
+            border-left-color: #00ffff;
+            border-left-width: 6px;
         }}
         
         .finding-header {{
@@ -336,11 +362,12 @@ class HTMLReporter:
         }}
         
         .finding-section h3 {{
-            color: #667eea;
+            color: #00ffff;
             font-size: 1em;
             margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            font-family: 'Courier New', monospace;
         }}
         
         .finding-section p {{
@@ -385,22 +412,24 @@ class HTMLReporter:
             position: absolute;
             top: 10px;
             right: 10px;
-            background: #667eea;
-            color: white;
+            background: #00ffff;
+            color: #000;
             border: none;
             padding: 8px 15px;
             border-radius: 5px;
             cursor: pointer;
             font-size: 0.85em;
             transition: background 0.2s;
+            font-weight: bold;
         }}
         
         .copy-btn:hover {{
-            background: #5568d3;
+            background: #ff0044;
+            color: white;
         }}
         
         .copy-btn:active {{
-            background: #4451a3;
+            background: #cc0036;
         }}
         
         .footer {{
@@ -446,14 +475,19 @@ class HTMLReporter:
 <body>
     <div class="container">
         <div class="header">
-            <pre style="color: white; line-height: 1.2; margin-bottom: 10px; font-size: 0.5em;">
-   ____                 _      ___  _       _   _             _            
-  / ___|_ __ __ _ _ __ | |__  / _ \| |     | | | |_   _ _ __ | |_ ___ _ __ 
- | |  _| '__/ _` | '_ \| '_ \| | | | |     | |_| | | | | '_ \| __/ _ \ '__|
- | |_| | | | (_| | |_) | | | | |_| | |___  |  _  | |_| | | | | ||  __/ |   
-  \____|_|  \__,_| .__/|_| |_|\__\_\_____| |_| |_|\__,_|_| |_|\__\___|_|   
-                 |_|                                                        
-            </pre>
+            <svg viewBox="0 0 1200 300" xmlns="http://www.w3.org/2000/svg" style="width: 100%; max-width: 800px; height: auto; margin: 0 auto; display: block;">
+                <rect fill="#000000" height="300" width="1200"/>
+                <text fill="#00ffff" font-family="Courier New, monospace" font-size="22" letter-spacing="4" text-anchor="middle" x="600" y="40">▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄</text>
+                <text fill="#00ffff" font-family="Courier New, monospace" font-size="22" letter-spacing="4" text-anchor="middle" x="600" y="65">█ ▄▄▄ █ ▄▄  ▄▄█ █ ▄▄▄ █ █ ▄▄▄ █</text>
+                <text fill="#ff0044" font-family="Courier New, monospace" font-size="22" letter-spacing="4" text-anchor="middle" x="600" y="90">█ ███ █ █▄▀▄ █ █ ███ █ █ ███ █</text>
+                <text fill="#ff0044" font-family="Courier New, monospace" font-size="22" letter-spacing="4" text-anchor="middle" x="600" y="115">█▄▄▄▄▄▄█ █ ▀ ▀ █ █▄▄▄▄▄▄█ █▄▄▄▄▄▄█</text>
+                <text fill="#00ffff" font-family="Courier New, monospace" font-size="22" letter-spacing="4" text-anchor="middle" x="600" y="140">▀▄▄▄▄▄▄▀▄▄▄▄▄▄▄▀▄▄▄▄▄▄▀ ▀▄▄▄▄▄▄▀</text>
+                <text fill="#666" font-family="Courier New, monospace" font-size="20" text-anchor="middle" x="600" y="170">// SHACKLED + GLITCHED //</text>
+                <rect fill="#ff0044" height="8" opacity="0.8" width="1200" x="0" y="15"/>
+                <rect fill="#00ffff" height="8" opacity="0.8" width="1200" x="0" y="277"/>
+                <text fill="#ff0044" font-family="Courier New, monospace" font-size="68" font-weight="bold" letter-spacing="12" text-anchor="middle" x="600" y="225">KAMAKAUZY</text>
+                <text fill="#00ffff" font-family="Courier New, monospace" font-size="72" font-weight="bold" letter-spacing="8" text-anchor="middle" x="600" y="280">GraphQL-Hunter</text>
+            </svg>
             <div class="subtitle">Security Assessment Report</div>
         </div>
         
