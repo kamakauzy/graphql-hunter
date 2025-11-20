@@ -261,13 +261,17 @@ class GraphQLClient:
         if not self.schema:
             return []
         
-        query_type_name = self.schema.get('queryType', {}).get('name')
+        query_type_name = self.schema.get('queryType', {})
+        if not query_type_name or not isinstance(query_type_name, dict):
+            return []
+        
+        query_type_name = query_type_name.get('name')
         if not query_type_name:
             return []
         
         for type_def in self.schema.get('types', []):
-            if type_def.get('name') == query_type_name:
-                return type_def.get('fields', [])
+            if type_def and type_def.get('name') == query_type_name:
+                return type_def.get('fields', []) or []
         
         return []
     
@@ -279,13 +283,17 @@ class GraphQLClient:
         if not self.schema:
             return []
         
-        mutation_type_name = self.schema.get('mutationType', {}).get('name')
+        mutation_type_name = self.schema.get('mutationType', {})
+        if not mutation_type_name or not isinstance(mutation_type_name, dict):
+            return []
+        
+        mutation_type_name = mutation_type_name.get('name')
         if not mutation_type_name:
             return []
         
         for type_def in self.schema.get('types', []):
-            if type_def.get('name') == mutation_type_name:
-                return type_def.get('fields', [])
+            if type_def and type_def.get('name') == mutation_type_name:
+                return type_def.get('fields', []) or []
         
         return []
     

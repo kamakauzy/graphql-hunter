@@ -65,6 +65,9 @@ class MutationFuzzer:
         """Identify potentially dangerous mutations"""
         findings = []
         
+        if not mutations:
+            return findings
+        
         dangerous_keywords = [
             'delete', 'remove', 'drop', 'destroy', 'admin', 'privilege',
             'permission', 'role', 'grant', 'revoke', 'ban', 'disable'
@@ -73,6 +76,8 @@ class MutationFuzzer:
         dangerous_mutations = []
         
         for mutation in mutations:
+            if not mutation or not isinstance(mutation, dict):
+                continue
             mutation_name = mutation.get('name', '').lower()
             
             for keyword in dangerous_keywords:
@@ -144,10 +149,15 @@ class MutationFuzzer:
         """Test for potential IDOR vulnerabilities in mutations"""
         findings = []
         
+        if not mutations:
+            return findings
+        
         # Look for mutations that take ID arguments
         idor_candidates = []
         
         for mutation in mutations:
+            if not mutation or not isinstance(mutation, dict):
+                continue
             mutation_name = mutation.get('name', '')
             args = mutation.get('args', [])
             

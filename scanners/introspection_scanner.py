@@ -59,8 +59,12 @@ class IntrospectionScanner:
                 }
             ))
             
-            # Analyze the schema
-            parser = SchemaParser(schema)
+            # Analyze the schema - wrap in try/except to handle parsing errors
+            try:
+                parser = SchemaParser(schema)
+            except Exception as e:
+                self.reporter.print_error(f"Schema parsing error: {e}")
+                return findings
             
             # Check schema complexity
             complexity = parser.analyze_complexity()

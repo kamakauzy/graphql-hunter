@@ -106,8 +106,16 @@ class AuthBypassScanner:
         """Test for sensitive operations that may bypass authorization"""
         findings = []
         
+        if not self.client.schema:
+            return findings
+        
         queries = self.client.get_queries()
         mutations = self.client.get_mutations()
+        
+        if not queries:
+            queries = []
+        if not mutations:
+            mutations = []
         
         # Look for admin/user/privilege-related operations
         sensitive_keywords = [

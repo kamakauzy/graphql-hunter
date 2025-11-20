@@ -17,10 +17,17 @@ class SchemaParser:
             schema: Introspection schema result
         """
         self.schema = schema
-        self.types = {t['name']: t for t in schema.get('types', [])}
-        self.query_type = schema.get('queryType', {}).get('name')
-        self.mutation_type = schema.get('mutationType', {}).get('name')
-        self.subscription_type = schema.get('subscriptionType', {}).get('name')
+        self.types = {}
+        
+        # Safely parse types
+        if schema and isinstance(schema, dict):
+            types_list = schema.get('types', [])
+            if types_list:
+                self.types = {t['name']: t for t in types_list if t and 'name' in t}
+        
+        self.query_type = schema.get('queryType', {}).get('name') if schema else None
+        self.mutation_type = schema.get('mutationType', {}).get('name') if schema and schema.get('mutationType') else None
+        self.subscription_type = schema.get('subscriptionType', {}).get('name') if schema and schema.get('subscriptionType') else None
     
     def get_queries(self) -> List[Dict]:
         """Get all query fields"""

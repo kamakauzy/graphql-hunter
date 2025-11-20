@@ -24,6 +24,8 @@ from batching_scanner import BatchingScanner
 from aliasing_scanner import AliasingScanner
 from circular_query_scanner import CircularQueryScanner
 from mutation_fuzzer import MutationFuzzer
+from xss_scanner import XSSScanner
+from jwt_scanner import JWTScanner
 
 
 def parse_args():
@@ -85,6 +87,10 @@ Examples:
                         help='Skip circular query tests')
     parser.add_argument('--skip-mutation-fuzzing', action='store_true',
                         help='Skip mutation fuzzing')
+    parser.add_argument('--skip-xss', action='store_true',
+                        help='Skip XSS tests')
+    parser.add_argument('--skip-jwt', action='store_true',
+                        help='Skip JWT security tests')
     
     # Output options
     parser.add_argument('-o', '--output', help='Output JSON file path')
@@ -182,6 +188,12 @@ def main():
     
     if not args.skip_mutation_fuzzing:
         scanners.append(('Mutation Fuzzing', MutationFuzzer(client, reporter, profile_config)))
+    
+    if not args.skip_xss:
+        scanners.append(('Cross-Site Scripting (XSS)', XSSScanner(client, reporter, profile_config)))
+    
+    if not args.skip_jwt:
+        scanners.append(('JWT Security', JWTScanner(client, reporter, profile_config)))
     
     # Execute scanners
     for scanner_name, scanner in scanners:
