@@ -499,11 +499,14 @@ Always verify findings manually before freaking out.
 
 *What success looks like (or doesn't)*
 
-Check out the example reports in the `examples/` directory:
-- **[sample-report.json](examples/sample-report.json)** - Machine-readable JSON report
-- **[sample-report.html](examples/sample-report.html)** - Beautiful HTML report (open in browser)
+Check out the **real vulnerability scan** in the `examples/` directory:
+- **[dvga-scan.json](examples/dvga-scan.json)** - Machine-readable JSON report (16.5 KB)
+- **[dvga-report.html](examples/dvga-report.html)** - Beautiful HTML report (37.5 KB) - open in browser
 
-These were generated from a real scan showing 8 findings including 2 HIGH severity issues.
+These were generated from a **deep scan of DVGA** (Damn Vulnerable GraphQL Application) showing **15 real findings**:
+- **3 HIGH** severity (IDOR, field aliasing abuse, unauth introspection)
+- **6 MEDIUM** severity (dangerous mutations, batching, no auth)
+- **6 INFO** severity (schema analysis, sensitive fields)
 
 ### Terminal Output
 

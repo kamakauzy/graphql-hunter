@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GraphQL Hunter Security Report - https://countries.trevorblades.com/graphql</title>
+    <title>GraphQL Hunter Security Report - http://localhost:5013/graphql</title>
     <style>
         * {
             margin: 0;
@@ -372,7 +372,7 @@
             <div class="metadata-grid">
                 <div class="metadata-item">
                     <label>Target URL</label>
-                    <value>https://countries.trevorblades.com/graphql</value>
+                    <value>http://localhost:5013/graphql</value>
                 </div>
                 <div class="metadata-item">
                     <label>Scan Profile</label>
@@ -380,11 +380,11 @@
                 </div>
                 <div class="metadata-item">
                     <label>Scan Date</label>
-                    <value>2025-11-20T20:56:00.578653</value>
+                    <value>2025-11-20T21:06:58.130948</value>
                 </div>
                 <div class="metadata-item">
                     <label>Safe Mode</label>
-                    <value>Disabled</value>
+                    <value>Enabled</value>
                 </div>
             </div>
         </div>
@@ -397,11 +397,11 @@
                     <div class="stat-label">Critical</div>
                 </div>
                 <div class="stat-card high">
-                    <div class="stat-number">2</div>
+                    <div class="stat-number">3</div>
                     <div class="stat-label">High</div>
                 </div>
                 <div class="stat-card medium">
-                    <div class="stat-number">3</div>
+                    <div class="stat-number">6</div>
                     <div class="stat-label">Medium</div>
                 </div>
                 <div class="stat-card low">
@@ -409,7 +409,7 @@
                     <div class="stat-label">Low</div>
                 </div>
                 <div class="stat-card info">
-                    <div class="stat-number">3</div>
+                    <div class="stat-number">6</div>
                     <div class="stat-label">Info</div>
                 </div>
             </div>
@@ -417,7 +417,7 @@
                 <span class="risk-badge risk-high">HIGH Risk</span>
             </p>
             <p style="text-align: center; margin-top: 15px; color: #666;">
-                Total Findings: <strong>8</strong>
+                Total Findings: <strong>15</strong>
             </p>
         </div>
         
@@ -458,7 +458,7 @@
                 
                 <div class="finding-section">
                     <h3>Description</h3>
-                    <p>The server accepted a query with 100 field aliases and took 0.66 seconds to process.</p>
+                    <p>The server accepted a query with 100 field aliases and took 0.05 seconds to process.</p>
                 </div>
                 
                 <div class="finding-section">
@@ -472,8 +472,34 @@
                 </div>
                 
                 <div class="evidence"><pre>alias_count: 100
-response_time: 0.6620030403137207</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...</pre></div></div>
+response_time: 0.04727339744567871</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...</pre></div></div>
                 <div class="cwe-badge">CWE-400: Uncontrolled Resource Consumption</div>
+            </div>
+            
+
+            <div class="finding high">
+                <div class="finding-header">
+                    <div class="finding-title">Potential IDOR Vulnerabilities in Mutations</div>
+                    <div class="severity-badge severity-high">HIGH</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>Found 3 mutations that accept ID arguments: editPaste, deletePaste, importPaste. These are potential IDOR (Insecure Direct Object Reference) targets.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>If these mutations don&#x27;t properly validate that the user is authorized to modify the object identified by the ID, attackers could manipulate other users&#x27; data by simply changing the ID parameter.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Implement object-level authorization checks in all mutations. Verify that the authenticated user has permission to modify the specific object before executing the mutation. Never rely solely on possessing the ID as proof of authorization.</p>
+                </div>
+                
+                <div class="evidence"><pre>idor_candidates: [{&#x27;mutation&#x27;: &#x27;editPaste&#x27;, &#x27;argument&#x27;: &#x27;id&#x27;, &#x27;type&#x27;: &#x27;Int&#x27;}, {&#x27;mutation&#x27;: &#x27;deletePaste&#x27;, &#x27;argument&#x27;: &#x27;id&#x27;, &#x27;type&#x27;: &#x27;Int&#x27;}, {&#x27;mutation&#x27;: &#x27;importPaste&#x27;, &#x27;argument&#x27;: &#x27;port&#x27;, &#x27;type&#x27;: &#x27;Int&#x27;}]</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>Test by calling mutations with ID parameters belonging to other users/objects</pre></div></div>
+                <div class="cwe-badge">CWE-639: Authorization Bypass Through User-Controlled Key</div>
             </div>
             
 
@@ -531,27 +557,158 @@ response_time: 0.6620030403137207</pre></div><div class="finding-section"><h3>Pr
 
             <div class="finding medium">
                 <div class="finding-header">
-                    <div class="finding-title">No Query Complexity Limit Detected</div>
+                    <div class="finding-title">Sensitive Mutations Discovered</div>
                     <div class="severity-badge severity-medium">MEDIUM</div>
                 </div>
                 
                 <div class="finding-section">
                     <h3>Description</h3>
-                    <p>The server accepted a highly complex query without error, suggesting complexity analysis may not be implemented.</p>
+                    <p>Found 2 mutations with names suggesting privileged operations: deletePaste, createUser</p>
                 </div>
                 
                 <div class="finding-section">
                     <h3>Impact</h3>
-                    <p>Without complexity limits, attackers can craft expensive queries that consume excessive server resources.</p>
+                    <p>These mutations can modify sensitive data or system state. If authorization is not properly implemented, attackers could perform privileged operations.</p>
                 </div>
                 
                 <div class="finding-section">
                     <h3>Remediation</h3>
-                    <p>Implement query complexity analysis. Tools like graphql-query-complexity can help. Set appropriate complexity thresholds.</p>
+                    <p>Ensure all sensitive mutations require proper authentication and authorization. Implement checks for user roles and permissions before executing mutations.</p>
                 </div>
                 
-                <div class="evidence"><pre>complex_query_accepted: True</pre></div>
+                <div class="evidence"><pre>sensitive_mutations: [&#x27;deletePaste&#x27;, &#x27;createUser&#x27;]</pre></div>
+                <div class="cwe-badge">CWE-862: Missing Authorization</div>
+            </div>
+            
+
+            <div class="finding medium">
+                <div class="finding-header">
+                    <div class="finding-title">Query Batching Enabled</div>
+                    <div class="severity-badge severity-medium">MEDIUM</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>The GraphQL endpoint allows query batching. Successfully executed 3 queries in a single request.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>Query batching can be exploited for various attacks including: rate limit bypass, credential stuffing, resource exhaustion, and amplification attacks where one HTTP request triggers multiple expensive operations.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Consider disabling query batching or implementing strict limits. If batching is required, implement: per-batch rate limiting, maximum batch size limits, and complexity analysis that considers the entire batch.</p>
+                </div>
+                
+                <div class="evidence"><pre>batch_size_tested: 3
+successful_queries: 3</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>Send array of queries: [{&#x27;query&#x27;: &#x27;...&#x27;}, {&#x27;query&#x27;: &#x27;...&#x27;}] to endpoint</pre></div></div>
                 <div class="cwe-badge">CWE-400: Uncontrolled Resource Consumption</div>
+            </div>
+            
+
+            <div class="finding medium">
+                <div class="finding-header">
+                    <div class="finding-title">Potentially Dangerous Mutations Found</div>
+                    <div class="severity-badge severity-medium">MEDIUM</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>Found 1 mutations with names suggesting destructive or privileged operations: deletePaste</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>Mutations that modify critical data or permissions must have robust authorization checks. If these checks are missing or flawed, attackers could perform unauthorized privileged operations.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Ensure all dangerous mutations require strong authentication and authorization. Implement role-based access control (RBAC). Add audit logging for all sensitive mutations. Consider implementing mutation rate limiting.</p>
+                </div>
+                
+                <div class="evidence"><pre>dangerous_mutations: [{&#x27;name&#x27;: &#x27;deletePaste&#x27;, &#x27;keyword&#x27;: &#x27;delete&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;id&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;Int&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}]}]</pre></div>
+                <div class="cwe-badge">CWE-862: Missing Authorization</div>
+            </div>
+            
+
+            <div class="finding medium">
+                <div class="finding-header">
+                    <div class="finding-title">Mutations Discoverable Without Authentication</div>
+                    <div class="severity-badge severity-medium">MEDIUM</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>Discovered 7 mutations without authentication. While discovery doesn&#x27;t mean they&#x27;re exploitable, it aids in reconnaissance.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>Attackers can discover all available mutations without authentication, allowing them to map the attack surface and identify potential targets.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Consider requiring authentication even for introspection. This reduces information disclosure to unauthenticated users.</p>
+                </div>
+                
+                <div class="evidence"><pre>mutation_count: 7</pre></div>
+                <div class="cwe-badge">CWE-200: Exposure of Sensitive Information to an Unauthorized Actor</div>
+            </div>
+            
+
+            <div class="finding info">
+                <div class="finding-header">
+                    <div class="finding-title">Potentially Sensitive Fields Discovered</div>
+                    <div class="severity-badge severity-info">INFO</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>Found 4 fields with names suggesting they may contain sensitive data. Examples: Query.systemDebug, UserObject.password, Login.accessToken, Login.refreshToken</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>These fields may contain sensitive information such as passwords, tokens, or private data. If accessible without proper authorization, this could lead to information disclosure.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Review access controls for these fields. Ensure proper authentication and authorization checks are in place. Consider field-level permissions.</p>
+                </div>
+                
+                <div class="evidence"><pre>sensitive_fields: [{&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;systemDebug&#x27;, &#x27;keyword&#x27;: &#x27;debug&#x27;}, {&#x27;type&#x27;: &#x27;UserObject&#x27;, &#x27;field&#x27;: &#x27;password&#x27;, &#x27;keyword&#x27;: &#x27;password&#x27;}, {&#x27;type&#x27;: &#x27;Login&#x27;, &#x27;field&#x27;: &#x27;accessToken&#x27;, &#x27;keyword&#x27;: &#x27;token&#x27;}, {&#x27;type&#x27;: &#x27;Login&#x27;, &#x27;field&#x27;: &#x27;refreshToken&#x27;, &#x27;keyword&#x27;: &#x27;token&#x27;}]</pre></div>
+                
+            </div>
+            
+
+            <div class="finding info">
+                <div class="finding-header">
+                    <div class="finding-title">Deprecated Fields Found</div>
+                    <div class="severity-badge severity-info">INFO</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>The schema contains 3 deprecated fields. These may indicate legacy functionality or planned breaking changes.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>Deprecated fields may have known vulnerabilities or may be removed in future versions. They could also indicate older, less secure code paths.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Review deprecated fields and migrate away from them. Remove deprecated fields when no longer needed to reduce attack surface.</p>
+                </div>
+                
+                <div class="evidence"><pre>deprecated_fields: [{&#x27;type&#x27;: &#x27;__Directive&#x27;, &#x27;field&#x27;: &#x27;onOperation&#x27;, &#x27;reason&#x27;: &#x27;Use `locations`.&#x27;}, {&#x27;type&#x27;: &#x27;__Directive&#x27;, &#x27;field&#x27;: &#x27;onFragment&#x27;, &#x27;reason&#x27;: &#x27;Use `locations`.&#x27;}, {&#x27;type&#x27;: &#x27;__Directive&#x27;, &#x27;field&#x27;: &#x27;onField&#x27;, &#x27;reason&#x27;: &#x27;Use `locations`.&#x27;}]</pre></div>
+                
             </div>
             
 
@@ -563,7 +720,7 @@ response_time: 0.6620030403137207</pre></div><div class="finding-section"><h3>Pr
                 
                 <div class="finding-section">
                     <h3>Description</h3>
-                    <p>Found 12 fields that accept arguments. These are potential injection points that should be tested.</p>
+                    <p>Found 19 fields that accept arguments. These are potential injection points that should be tested.</p>
                 </div>
                 
                 <div class="finding-section">
@@ -576,60 +733,86 @@ response_time: 0.6620030403137207</pre></div><div class="finding-section"><h3>Pr
                     <p>Ensure all fields with arguments properly validate and sanitize input. Use parameterized queries and input validation.</p>
                 </div>
                 
-                <div class="evidence"><pre>fields_count: 12
-sample_fields: [{&#x27;type&#x27;: &#x27;Country&#x27;, &#x27;field&#x27;: &#x27;name&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;lang&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;String&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}]}, {&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;continent&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;code&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;NON_NULL&#x27;, &#x27;name&#x27;: None, &#x27;ofType&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;ID&#x27;, &#x27;ofType&#x27;: None}}, &#x27;defaultValue&#x27;: None}]}, {&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;continents&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;filter&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;INPUT_OBJECT&#x27;, &#x27;name&#x27;: &#x27;ContinentFilterInput&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: &#x27;{}&#x27;}]}, {&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;countries&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;filter&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;INPUT_OBJECT&#x27;, &#x27;name&#x27;: &#x27;CountryFilterInput&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: &#x27;{}&#x27;}]}, {&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;country&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;code&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;NON_NULL&#x27;, &#x27;name&#x27;: None, &#x27;ofType&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;ID&#x27;, &#x27;ofType&#x27;: None}}, &#x27;defaultValue&#x27;: None}]}]</pre></div>
+                <div class="evidence"><pre>fields_count: 19
+sample_fields: [{&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;pastes&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;public&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;Boolean&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}, {&#x27;name&#x27;: &#x27;limit&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;Int&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}, {&#x27;name&#x27;: &#x27;filter&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;String&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}]}, {&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;paste&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;id&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;Int&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}, {&#x27;name&#x27;: &#x27;title&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;String&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}]}, {&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;systemDiagnostics&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;username&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;String&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}, {&#x27;name&#x27;: &#x27;password&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;String&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}, {&#x27;name&#x27;: &#x27;cmd&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;String&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}]}, {&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;systemDebug&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;arg&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;String&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}]}, {&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;users&#x27;, &#x27;args&#x27;: [{&#x27;name&#x27;: &#x27;id&#x27;, &#x27;description&#x27;: None, &#x27;type&#x27;: {&#x27;kind&#x27;: &#x27;SCALAR&#x27;, &#x27;name&#x27;: &#x27;Int&#x27;, &#x27;ofType&#x27;: None}, &#x27;defaultValue&#x27;: None}]}]</pre></div>
                 
             </div>
             
 
             <div class="finding info">
                 <div class="finding-header">
-                    <div class="finding-title">Query Depth Limit Enforced</div>
+                    <div class="finding-title">Mutations Available</div>
                     <div class="severity-badge severity-info">INFO</div>
                 </div>
                 
                 <div class="finding-section">
                     <h3>Description</h3>
-                    <p>The server properly rejects queries exceeding depth 5, indicating depth limiting is implemented.</p>
+                    <p>The API exposes 7 mutations that can modify data.</p>
                 </div>
                 
                 <div class="finding-section">
                     <h3>Impact</h3>
-                    <p>None - this is the recommended secure configuration.</p>
+                    <p>Mutations can modify server-side state. If not properly protected, they could be exploited for unauthorized data modification.</p>
                 </div>
                 
                 <div class="finding-section">
                     <h3>Remediation</h3>
-                    <p>No action needed. Keep depth limiting enabled.</p>
+                    <p>Ensure all mutations require proper authentication and authorization. Implement rate limiting on sensitive mutations.</p>
                 </div>
                 
-                <div class="evidence"><pre>depth_limit: 5</pre></div>
+                <div class="evidence"><pre>mutation_count: 7</pre></div>
                 
             </div>
             
 
             <div class="finding info">
                 <div class="finding-header">
-                    <div class="finding-title">Batch Size Limit Enforced</div>
+                    <div class="finding-title">Subscriptions Available</div>
                     <div class="severity-badge severity-info">INFO</div>
                 </div>
                 
                 <div class="finding-section">
                     <h3>Description</h3>
-                    <p>The server properly limits batch sizes. Batch of 10 was rejected or limited.</p>
+                    <p>The API supports 1 real-time subscriptions.</p>
                 </div>
                 
                 <div class="finding-section">
                     <h3>Impact</h3>
-                    <p>None - this is a security best practice.</p>
+                    <p>Subscriptions maintain persistent connections. If not properly secured, they could be exploited for DoS attacks or unauthorized data access.</p>
                 </div>
                 
                 <div class="finding-section">
                     <h3>Remediation</h3>
-                    <p>No action needed. Keep batch limiting enabled.</p>
+                    <p>Implement connection limits and rate limiting for subscriptions. Ensure proper authentication for subscription endpoints.</p>
                 </div>
                 
-                <div class="evidence"><pre>batch_size_limit: 10</pre></div>
+                <div class="evidence"><pre>subscription_count: 1</pre></div>
+                
+            </div>
+            
+
+            <div class="finding info">
+                <div class="finding-header">
+                    <div class="finding-title">Sensitive Queries Discovered</div>
+                    <div class="severity-badge severity-info">INFO</div>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Description</h3>
+                    <p>Found 2 queries with names suggesting sensitive operations: users, deleteAllPastes</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Impact</h3>
+                    <p>These queries may expose or manipulate sensitive data. Ensure they have proper authorization checks to prevent unauthorized access.</p>
+                </div>
+                
+                <div class="finding-section">
+                    <h3>Remediation</h3>
+                    <p>Review authorization logic for these queries. Implement field-level and object-level authorization checks. Use role-based access control (RBAC).</p>
+                </div>
+                
+                <div class="evidence"><pre>sensitive_queries: [&#x27;users&#x27;, &#x27;deleteAllPastes&#x27;]</pre></div>
                 
             </div>
             
@@ -637,7 +820,7 @@ sample_fields: [{&#x27;type&#x27;: &#x27;Country&#x27;, &#x27;field&#x27;: &#x27
         
         <div class="footer">
             <p><strong>GraphQL Hunter v1.0</strong></p>
-            <p>Generated on 2025-11-20 14:56:15</p>
+            <p>Generated on 2025-11-20 15:07:01</p>
             <p>For questions or support, contact <a href="mailto:brad@securit360.com">brad@securit360.com</a></p>
             <p style="margin-top: 15px; font-size: 0.9em; opacity: 0.8;">
                 This report is for authorized security testing only. Always obtain proper authorization before testing.

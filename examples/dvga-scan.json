@@ -1,0 +1,392 @@
+{
+  "metadata": {
+    "target": "http://localhost:5013/graphql",
+    "profile": "deep",
+    "safe_mode": true,
+    "timestamp": "2025-11-20T21:06:58.130948"
+  },
+  "findings": [
+    {
+      "title": "GraphQL Introspection Enabled",
+      "severity": "MEDIUM",
+      "description": "The GraphQL endpoint has introspection enabled, which allows attackers to discover the complete API schema including all queries, mutations, types, and fields.",
+      "impact": "Attackers can map the entire API surface area, discover hidden or undocumented endpoints, and identify potential attack vectors. This significantly aids reconnaissance and can expose sensitive functionality.",
+      "remediation": "Disable introspection in production environments. In most GraphQL implementations, this can be done through configuration settings. Keep introspection enabled only in development/testing environments.",
+      "evidence": {
+        "introspection_response": "Full schema retrieved successfully"
+      },
+      "cwe": "CWE-200: Exposure of Sensitive Information to an Unauthorized Actor"
+    },
+    {
+      "title": "Potentially Sensitive Fields Discovered",
+      "severity": "INFO",
+      "description": "Found 4 fields with names suggesting they may contain sensitive data. Examples: Query.systemDebug, UserObject.password, Login.accessToken, Login.refreshToken",
+      "impact": "These fields may contain sensitive information such as passwords, tokens, or private data. If accessible without proper authorization, this could lead to information disclosure.",
+      "remediation": "Review access controls for these fields. Ensure proper authentication and authorization checks are in place. Consider field-level permissions.",
+      "evidence": {
+        "sensitive_fields": [
+          {
+            "type": "Query",
+            "field": "systemDebug",
+            "keyword": "debug"
+          },
+          {
+            "type": "UserObject",
+            "field": "password",
+            "keyword": "password"
+          },
+          {
+            "type": "Login",
+            "field": "accessToken",
+            "keyword": "token"
+          },
+          {
+            "type": "Login",
+            "field": "refreshToken",
+            "keyword": "token"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Deprecated Fields Found",
+      "severity": "INFO",
+      "description": "The schema contains 3 deprecated fields. These may indicate legacy functionality or planned breaking changes.",
+      "impact": "Deprecated fields may have known vulnerabilities or may be removed in future versions. They could also indicate older, less secure code paths.",
+      "remediation": "Review deprecated fields and migrate away from them. Remove deprecated fields when no longer needed to reduce attack surface.",
+      "evidence": {
+        "deprecated_fields": [
+          {
+            "type": "__Directive",
+            "field": "onOperation",
+            "reason": "Use `locations`."
+          },
+          {
+            "type": "__Directive",
+            "field": "onFragment",
+            "reason": "Use `locations`."
+          },
+          {
+            "type": "__Directive",
+            "field": "onField",
+            "reason": "Use `locations`."
+          }
+        ]
+      }
+    },
+    {
+      "title": "Fields With Arguments Identified",
+      "severity": "INFO",
+      "description": "Found 19 fields that accept arguments. These are potential injection points that should be tested.",
+      "impact": "Fields accepting arguments are common injection vectors for SQL injection, NoSQL injection, and other input-based attacks.",
+      "remediation": "Ensure all fields with arguments properly validate and sanitize input. Use parameterized queries and input validation.",
+      "evidence": {
+        "fields_count": 19,
+        "sample_fields": [
+          {
+            "type": "Query",
+            "field": "pastes",
+            "args": [
+              {
+                "name": "public",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "Boolean",
+                  "ofType": null
+                },
+                "defaultValue": null
+              },
+              {
+                "name": "limit",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                },
+                "defaultValue": null
+              },
+              {
+                "name": "filter",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                },
+                "defaultValue": null
+              }
+            ]
+          },
+          {
+            "type": "Query",
+            "field": "paste",
+            "args": [
+              {
+                "name": "id",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                },
+                "defaultValue": null
+              },
+              {
+                "name": "title",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                },
+                "defaultValue": null
+              }
+            ]
+          },
+          {
+            "type": "Query",
+            "field": "systemDiagnostics",
+            "args": [
+              {
+                "name": "username",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                },
+                "defaultValue": null
+              },
+              {
+                "name": "password",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                },
+                "defaultValue": null
+              },
+              {
+                "name": "cmd",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                },
+                "defaultValue": null
+              }
+            ]
+          },
+          {
+            "type": "Query",
+            "field": "systemDebug",
+            "args": [
+              {
+                "name": "arg",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                },
+                "defaultValue": null
+              }
+            ]
+          },
+          {
+            "type": "Query",
+            "field": "users",
+            "args": [
+              {
+                "name": "id",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                },
+                "defaultValue": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "Mutations Available",
+      "severity": "INFO",
+      "description": "The API exposes 7 mutations that can modify data.",
+      "impact": "Mutations can modify server-side state. If not properly protected, they could be exploited for unauthorized data modification.",
+      "remediation": "Ensure all mutations require proper authentication and authorization. Implement rate limiting on sensitive mutations.",
+      "evidence": {
+        "mutation_count": 7
+      }
+    },
+    {
+      "title": "Subscriptions Available",
+      "severity": "INFO",
+      "description": "The API supports 1 real-time subscriptions.",
+      "impact": "Subscriptions maintain persistent connections. If not properly secured, they could be exploited for DoS attacks or unauthorized data access.",
+      "remediation": "Implement connection limits and rate limiting for subscriptions. Ensure proper authentication for subscription endpoints.",
+      "evidence": {
+        "subscription_count": 1
+      }
+    },
+    {
+      "title": "Unauthenticated Introspection Access",
+      "severity": "HIGH",
+      "description": "The GraphQL endpoint allows full introspection queries without authentication. This enables anonymous attackers to discover the entire API structure.",
+      "impact": "Unauthenticated introspection allows anyone to map the complete API surface, including potentially sensitive queries and mutations. This significantly aids in reconnaissance and attack planning.",
+      "remediation": "Require authentication for introspection queries. Implement authentication middleware that validates credentials before processing introspection requests.",
+      "evidence": {
+        "unauthenticated_introspection": "SUCCESS"
+      },
+      "cwe": "CWE-306: Missing Authentication for Critical Function"
+    },
+    {
+      "title": "API Accessible Without Authentication",
+      "severity": "MEDIUM",
+      "description": "The GraphQL endpoint responds to queries without requiring authentication.",
+      "impact": "If the API contains sensitive data or operations, lack of authentication allows unauthorized access. This depends on what data is actually exposed.",
+      "remediation": "Implement authentication requirements for the GraphQL endpoint. Use middleware to validate authentication tokens before processing queries.",
+      "evidence": {
+        "unauthenticated_query": "SUCCESS"
+      },
+      "cwe": "CWE-306: Missing Authentication for Critical Function"
+    },
+    {
+      "title": "Sensitive Queries Discovered",
+      "severity": "INFO",
+      "description": "Found 2 queries with names suggesting sensitive operations: users, deleteAllPastes",
+      "impact": "These queries may expose or manipulate sensitive data. Ensure they have proper authorization checks to prevent unauthorized access.",
+      "remediation": "Review authorization logic for these queries. Implement field-level and object-level authorization checks. Use role-based access control (RBAC).",
+      "evidence": {
+        "sensitive_queries": [
+          "users",
+          "deleteAllPastes"
+        ]
+      }
+    },
+    {
+      "title": "Sensitive Mutations Discovered",
+      "severity": "MEDIUM",
+      "description": "Found 2 mutations with names suggesting privileged operations: deletePaste, createUser",
+      "impact": "These mutations can modify sensitive data or system state. If authorization is not properly implemented, attackers could perform privileged operations.",
+      "remediation": "Ensure all sensitive mutations require proper authentication and authorization. Implement checks for user roles and permissions before executing mutations.",
+      "evidence": {
+        "sensitive_mutations": [
+          "deletePaste",
+          "createUser"
+        ]
+      },
+      "cwe": "CWE-862: Missing Authorization"
+    },
+    {
+      "title": "Query Batching Enabled",
+      "severity": "MEDIUM",
+      "description": "The GraphQL endpoint allows query batching. Successfully executed 3 queries in a single request.",
+      "impact": "Query batching can be exploited for various attacks including: rate limit bypass, credential stuffing, resource exhaustion, and amplification attacks where one HTTP request triggers multiple expensive operations.",
+      "remediation": "Consider disabling query batching or implementing strict limits. If batching is required, implement: per-batch rate limiting, maximum batch size limits, and complexity analysis that considers the entire batch.",
+      "evidence": {
+        "batch_size_tested": 3,
+        "successful_queries": 3
+      },
+      "poc": "Send array of queries: [{'query': '...'}, {'query': '...'}] to endpoint",
+      "cwe": "CWE-400: Uncontrolled Resource Consumption"
+    },
+    {
+      "title": "Field Aliasing Abuse Possible",
+      "severity": "HIGH",
+      "description": "The server accepted a query with 100 field aliases and took 0.05 seconds to process.",
+      "impact": "Field aliasing can be exploited to multiply the cost of a single query by requesting the same expensive field multiple times under different aliases. This can lead to severe resource exhaustion and DoS.",
+      "remediation": "Implement query cost analysis that counts aliased fields. Each alias should contribute to the query cost. Consider limiting the total number of fields (including aliases) in a single query.",
+      "evidence": {
+        "alias_count": 100,
+        "response_time": 0.04727339744567871
+      },
+      "poc": "Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...",
+      "cwe": "CWE-400: Uncontrolled Resource Consumption"
+    },
+    {
+      "title": "Potentially Dangerous Mutations Found",
+      "severity": "MEDIUM",
+      "description": "Found 1 mutations with names suggesting destructive or privileged operations: deletePaste",
+      "impact": "Mutations that modify critical data or permissions must have robust authorization checks. If these checks are missing or flawed, attackers could perform unauthorized privileged operations.",
+      "remediation": "Ensure all dangerous mutations require strong authentication and authorization. Implement role-based access control (RBAC). Add audit logging for all sensitive mutations. Consider implementing mutation rate limiting.",
+      "evidence": {
+        "dangerous_mutations": [
+          {
+            "name": "deletePaste",
+            "keyword": "delete",
+            "args": [
+              {
+                "name": "id",
+                "description": null,
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                },
+                "defaultValue": null
+              }
+            ]
+          }
+        ]
+      },
+      "cwe": "CWE-862: Missing Authorization"
+    },
+    {
+      "title": "Mutations Discoverable Without Authentication",
+      "severity": "MEDIUM",
+      "description": "Discovered 7 mutations without authentication. While discovery doesn't mean they're exploitable, it aids in reconnaissance.",
+      "impact": "Attackers can discover all available mutations without authentication, allowing them to map the attack surface and identify potential targets.",
+      "remediation": "Consider requiring authentication even for introspection. This reduces information disclosure to unauthenticated users.",
+      "evidence": {
+        "mutation_count": 7
+      },
+      "cwe": "CWE-200: Exposure of Sensitive Information to an Unauthorized Actor"
+    },
+    {
+      "title": "Potential IDOR Vulnerabilities in Mutations",
+      "severity": "HIGH",
+      "description": "Found 3 mutations that accept ID arguments: editPaste, deletePaste, importPaste. These are potential IDOR (Insecure Direct Object Reference) targets.",
+      "impact": "If these mutations don't properly validate that the user is authorized to modify the object identified by the ID, attackers could manipulate other users' data by simply changing the ID parameter.",
+      "remediation": "Implement object-level authorization checks in all mutations. Verify that the authenticated user has permission to modify the specific object before executing the mutation. Never rely solely on possessing the ID as proof of authorization.",
+      "evidence": {
+        "idor_candidates": [
+          {
+            "mutation": "editPaste",
+            "argument": "id",
+            "type": "Int"
+          },
+          {
+            "mutation": "deletePaste",
+            "argument": "id",
+            "type": "Int"
+          },
+          {
+            "mutation": "importPaste",
+            "argument": "port",
+            "type": "Int"
+          }
+        ]
+      },
+      "poc": "Test by calling mutations with ID parameters belonging to other users/objects",
+      "cwe": "CWE-639: Authorization Bypass Through User-Controlled Key"
+    }
+  ],
+  "summary": {
+    "total": 15,
+    "by_severity": {
+      "CRITICAL": 0,
+      "HIGH": 3,
+      "MEDIUM": 6,
+      "LOW": 0,
+      "INFO": 6
+    }
+  }
+}
