@@ -56,7 +56,9 @@ class IntrospectionScanner:
                 cwe="CWE-200: Exposure of Sensitive Information to an Unauthorized Actor",
                 evidence={
                     'introspection_response': 'Full schema retrieved successfully'
-                }
+                },
+                poc="{ __schema { types { name } } }",
+                url=self.client.url
             ))
             
             # Analyze the schema - wrap in try/except to handle parsing errors

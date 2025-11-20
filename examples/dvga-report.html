@@ -314,6 +314,35 @@
             margin-top: 10px;
         }
         
+        .curl-command, .burp-request {
+            position: relative;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-left: 4px solid #667eea;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: background 0.2s;
+        }
+        
+        .copy-btn:hover {
+            background: #5568d3;
+        }
+        
+        .copy-btn:active {
+            background: #4451a3;
+        }
+        
         .footer {
             background: #343a40;
             color: white;
@@ -380,7 +409,7 @@
                 </div>
                 <div class="metadata-item">
                     <label>Scan Date</label>
-                    <value>2025-11-20T21:06:58.130948</value>
+                    <value>2025-11-20T22:23:30.880862</value>
                 </div>
                 <div class="metadata-item">
                     <label>Safe Mode</label>
@@ -458,7 +487,7 @@
                 
                 <div class="finding-section">
                     <h3>Description</h3>
-                    <p>The server accepted a query with 100 field aliases and took 0.05 seconds to process.</p>
+                    <p>The server accepted a query with 100 field aliases and took 0.06 seconds to process.</p>
                 </div>
                 
                 <div class="finding-section">
@@ -472,7 +501,7 @@
                 </div>
                 
                 <div class="evidence"><pre>alias_count: 100
-response_time: 0.04727339744567871</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...</pre></div></div>
+response_time: 0.06441998481750488</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>Query with 100 aliases: { alias0: __typename alias1: __typename alias2: __typename alias3: __typename alias4: __typename alias5: __typename alias6: __typename alias7: __typename alias8: __typename alias9: __typename alias10:...</pre></div></div>
                 <div class="cwe-badge">CWE-400: Uncontrolled Resource Consumption</div>
             </div>
             
@@ -524,7 +553,14 @@ response_time: 0.04727339744567871</pre></div><div class="finding-section"><h3>P
                     <p>Disable introspection in production environments. In most GraphQL implementations, this can be done through configuration settings. Keep introspection enabled only in development/testing environments.</p>
                 </div>
                 
-                <div class="evidence"><pre>introspection_response: Full schema retrieved successfully</pre></div>
+                <div class="evidence"><pre>introspection_response: Full schema retrieved successfully</pre></div><div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>{ __schema { types { name } } }</pre></div></div><div class="finding-section"><h3>🔧 Exploit with cURL</h3><div class="evidence curl-command"><pre>curl -X POST http://localhost:5013/graphql \
+  -H &quot;Content-Type: application/json&quot; \
+  -d &#x27;{&quot;query&quot;:&quot;{ __schema { types { name } } }&quot;}&#x27;</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div><div class="finding-section"><h3>🔥 Burp Suite Request</h3><div class="evidence burp-request"><pre>POST /graphql HTTP/1.1
+Host: localhost:5013
+Content-Type: application/json
+Content-Length: 44
+
+{&quot;query&quot;: &quot;{ __schema { types { name } } }&quot;}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>
                 <div class="cwe-badge">CWE-200: Exposure of Sensitive Information to an Unauthorized Actor</div>
             </div>
             
@@ -820,12 +856,35 @@ sample_fields: [{&#x27;type&#x27;: &#x27;Query&#x27;, &#x27;field&#x27;: &#x27;p
         
         <div class="footer">
             <p><strong>GraphQL Hunter v1.0</strong></p>
-            <p>Generated on 2025-11-20 15:07:01</p>
+            <p>Generated on 2025-11-20 16:23:33</p>
             <p>For questions or support, contact <a href="mailto:brad@securit360.com">brad@securit360.com</a></p>
             <p style="margin-top: 15px; font-size: 0.9em; opacity: 0.8;">
                 This report is for authorized security testing only. Always obtain proper authorization before testing.
             </p>
         </div>
     </div>
+    
+    <script>
+    function copyToClipboard(button) {
+        const codeBlock = button.previousElementSibling;
+        const text = codeBlock.textContent;
+        
+        navigator.clipboard.writeText(text).then(() => {
+            const originalText = button.textContent;
+            button.textContent = 'Copied!';
+            button.style.background = '#4caf50';
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.style.background = '#667eea';
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy:', err);
+            button.textContent = 'Failed';
+            setTimeout(() => {
+                button.textContent = 'Copy';
+            }, 2000);
+        });
+    }
+    </script>
 </body>
 </html>

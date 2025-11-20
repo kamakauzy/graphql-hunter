@@ -165,11 +165,12 @@ def estimate_query_complexity(query: str) -> int:
     return depth * field_count
 
 
-def create_finding(title: str, severity: str, description: str, 
+def create_finding(title: str, severity: str, description: str,
                    impact: str, remediation: str, evidence: Optional[Dict] = None,
-                   poc: Optional[str] = None, cwe: Optional[str] = None) -> Dict:
+                   poc: Optional[str] = None, cwe: Optional[str] = None, 
+                   url: Optional[str] = None) -> Dict:
     """
-    Create a standardized finding dictionary
+    Create a standardized finding dictionary with actionable exploit formats
     
     Args:
         title: Finding title
@@ -180,9 +181,10 @@ def create_finding(title: str, severity: str, description: str,
         evidence: Supporting evidence (request/response)
         poc: Proof of concept
         cwe: CWE identifier
+        url: Target URL for generating curl/burp commands
         
     Returns:
-        Finding dictionary
+        Finding dictionary with curl and Burp Suite formats
     """
     finding = {
         'title': title,
@@ -196,8 +198,77 @@ def create_finding(title: str, severity: str, description: str,
         finding['evidence'] = evidence
     if poc:
         finding['poc'] = poc
+        
+        # Generate curl command if URL and POC are provided
+        if url and poc:
+            curl_cmd = generate_curl_command(url, poc)
+            if curl_cmd:
+                finding['curl_command'] = curl_cmd
+            
+            burp_request = generate_burp_request(url, poc)
+            if burp_request:
+                finding['burp_request'] = burp_request
     if cwe:
         finding['cwe'] = cwe
     
     return finding
+
+
+def generate_curl_command(url: str, query: str) -> str:
+    """
+    Generate a curl command for executing a GraphQL query
+    
+    Args:
+        url: GraphQL endpoint URL
+        query: GraphQL query string
+    
+    Returns:
+        Formatted curl command
+    """
+    # Escape quotes and newlines in query
+    escaped_query = query.replace('"', '\\"').replace('\n', ' ').replace('\r', '').strip()
+    
+    # Truncate very long queries for readability
+    if len(escaped_query) > 500:
+        escaped_query = escaped_query[:500] + '...'
+    
+    # Build curl command
+    curl_cmd = f"""curl -X POST {url} \\
+  -H "Content-Type: application/json" \\
+  -d '{{"query":"{escaped_query}"}}'"""
+    
+    return curl_cmd
+
+
+def generate_burp_request(url: str, query: str) -> str:
+    """
+    Generate a Burp Suite HTTP request for a GraphQL query
+    
+    Args:
+        url: GraphQL endpoint URL
+        query: GraphQL query string
+    
+    Returns:
+        Formatted HTTP request for Burp Suite
+    """
+    from urllib.parse import urlparse
+    import json
+    
+    parsed = urlparse(url)
+    host = parsed.netloc
+    path = parsed.path or '/graphql'
+    scheme = parsed.scheme
+    
+    # Escape query for JSON
+    body = json.dumps({"query": query})
+    content_length = len(body)
+    
+    burp_request = f'''POST {path} HTTP/1.1
+Host: {host}
+Content-Type: application/json
+Content-Length: {content_length}
+
+{body}'''
+    
+    return burp_request
 

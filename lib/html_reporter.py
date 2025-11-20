@@ -374,6 +374,35 @@ class HTMLReporter:
             margin-top: 10px;
         }}
         
+        .curl-command, .burp-request {{
+            position: relative;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-left: 4px solid #667eea;
+        }}
+        
+        .copy-btn {{
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: background 0.2s;
+        }}
+        
+        .copy-btn:hover {{
+            background: #5568d3;
+        }}
+        
+        .copy-btn:active {{
+            background: #4451a3;
+        }}
+        
         .footer {{
             background: #343a40;
             color: white;
@@ -495,6 +524,29 @@ class HTMLReporter:
             </p>
         </div>
     </div>
+    
+    <script>
+    function copyToClipboard(button) {{
+        const codeBlock = button.previousElementSibling;
+        const text = codeBlock.textContent;
+        
+        navigator.clipboard.writeText(text).then(() => {{
+            const originalText = button.textContent;
+            button.textContent = 'Copied!';
+            button.style.background = '#4caf50';
+            setTimeout(() => {{
+                button.textContent = originalText;
+                button.style.background = '#667eea';
+            }}, 2000);
+        }}).catch(err => {{
+            console.error('Failed to copy:', err);
+            button.textContent = 'Failed';
+            setTimeout(() => {{
+                button.textContent = 'Copy';
+            }}, 2000);
+        }});
+    }}
+    </script>
 </body>
 </html>"""
         
@@ -534,8 +586,19 @@ class HTMLReporter:
                 evidence_str = '\n'.join([f"{k}: {v}" for k, v in evidence.items()])
                 evidence_html = f'<div class="evidence"><pre>{HTMLReporter._escape_html(evidence_str)}</pre></div>'
             
+            # POC section
             if poc:
                 evidence_html += f'<div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>{HTMLReporter._escape_html(poc)}</pre></div></div>'
+            
+            # Curl command section
+            curl_command = finding.get('curl_command')
+            if curl_command:
+                evidence_html += f'<div class="finding-section"><h3>🔧 Exploit with cURL</h3><div class="evidence curl-command"><pre>{HTMLReporter._escape_html(curl_command)}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>'
+            
+            # Burp Suite request section
+            burp_request = finding.get('burp_request')
+            if burp_request:
+                evidence_html += f'<div class="finding-section"><h3>🔥 Burp Suite Request</h3><div class="evidence burp-request"><pre>{HTMLReporter._escape_html(burp_request)}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>'
             
             cwe_html = f'<div class="cwe-badge">{cwe}</div>' if cwe else ''
             
