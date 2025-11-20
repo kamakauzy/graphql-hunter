@@ -1,15 +1,8 @@
 # GraphQL Hunter
 
-![GraphQL Hunter Banner](graphql-hunter-banner.png)
-
-```
-   ____                 _      ___  _       _   _             _            
-  / ___|_ __ __ _ _ __ | |__  / _ \| |     | | | |_   _ _ __ | |_ ___ _ __ 
- | |  _| '__/ _` | '_ \| '_ \| | | | |     | |_| | | | | '_ \| __/ _ \ '__|
- | |_| | | | (_| | |_) | | | | |_| | |___  |  _  | |_| | | | | ||  __/ |   
-  \____|_|  \__,_| .__/|_| |_|\__\_\_____| |_| |_|\__,_|_| |_|\__\___|_|   
-                 |_|                                                        
-```
+<p align="center">
+  <img src="graphql-hunter-banner.png" alt="GraphQL Hunter" width="800"/>
+</p>
 
 > *"Because GraphQL APIs deserve a security audit that's more thorough than your code reviews."* 😎
 
