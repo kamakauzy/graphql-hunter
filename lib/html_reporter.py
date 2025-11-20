@@ -30,13 +30,13 @@ class HTMLReporter:
     def _build_html(metadata: Dict, findings: List[Dict], summary: Dict) -> str:
         """Build complete HTML document"""
         
-        # Get severity counts
+        # Get severity counts - count from actual findings
         severity_counts = {
-            'CRITICAL': summary.get('critical', 0),
-            'HIGH': summary.get('high', 0),
-            'MEDIUM': summary.get('medium', 0),
-            'LOW': summary.get('low', 0),
-            'INFO': summary.get('info', 0)
+            'CRITICAL': sum(1 for f in findings if f.get('severity', '').upper() == 'CRITICAL'),
+            'HIGH': sum(1 for f in findings if f.get('severity', '').upper() == 'HIGH'),
+            'MEDIUM': sum(1 for f in findings if f.get('severity', '').upper() == 'MEDIUM'),
+            'LOW': sum(1 for f in findings if f.get('severity', '').upper() == 'LOW'),
+            'INFO': sum(1 for f in findings if f.get('severity', '').upper() == 'INFO')
         }
         
         total = sum(severity_counts.values())
@@ -486,9 +486,19 @@ class HTMLReporter:
         if not findings:
             return ''
         
+        # Sort findings by severity (CRITICAL -> HIGH -> MEDIUM -> LOW -> INFO)
+        severity_order = {
+            'CRITICAL': 0,
+            'HIGH': 1,
+            'MEDIUM': 2,
+            'LOW': 3,
+            'INFO': 4
+        }
+        sorted_findings = sorted(findings, key=lambda x: severity_order.get(x.get('severity', 'INFO').upper(), 5))
+        
         html_parts = []
         
-        for finding in findings:
+        for finding in sorted_findings:
             severity = finding.get('severity', 'INFO').lower()
             title = finding.get('title', 'Unknown Issue')
             description = finding.get('description', 'No description provided')
