@@ -30,6 +30,17 @@ class HTMLReporter:
     def _build_html(metadata: Dict, findings: List[Dict], summary: Dict) -> str:
         """Build complete HTML document"""
         
+        # Read and encode banner image
+        import base64
+        import os
+        banner_data = ""
+        banner_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'graphql-hunter-banner.png')
+        try:
+            with open(banner_path, 'rb') as f:
+                banner_data = base64.b64encode(f.read()).decode('utf-8')
+        except Exception:
+            pass  # If banner not found, just skip it
+        
         # Get severity counts - count from actual findings
         severity_counts = {
             'CRITICAL': sum(1 for f in findings if f.get('severity', '').upper() == 'CRITICAL'),
@@ -122,9 +133,9 @@ class HTMLReporter:
         }}
         
         .metadata {{
-            background: #f8f9fa;
+            background: #0a0a0a;
             padding: 30px 40px;
-            border-bottom: 3px solid #e9ecef;
+            border-bottom: 3px solid #00ffff;
         }}
         
         .metadata-grid {{
@@ -134,15 +145,15 @@ class HTMLReporter:
         }}
         
         .metadata-item {{
-            background: white;
+            background: #1a1a1a;
             padding: 15px;
             border-radius: 8px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid #00ffff;
         }}
         
         .metadata-item label {{
             font-weight: 600;
-            color: #666;
+            color: #00ffff;
             font-size: 0.85em;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -150,7 +161,7 @@ class HTMLReporter:
         
         .metadata-item value {{
             display: block;
-            color: #333;
+            color: #ffffff;
             font-size: 1.1em;
             margin-top: 5px;
             word-break: break-all;
@@ -158,11 +169,11 @@ class HTMLReporter:
         
         .summary {{
             padding: 40px;
-            background: white;
+            background: #000000;
         }}
         
         .summary h2 {{
-            color: #333;
+            color: #00ffff;
             margin-bottom: 25px;
             font-size: 1.8em;
         }}
@@ -267,22 +278,22 @@ class HTMLReporter:
         
         .findings {{
             padding: 40px;
-            background: #f8f9fa;
+            background: #000000;
         }}
         
         .findings h2 {{
-            color: #333;
+            color: #00ffff;
             margin-bottom: 25px;
             font-size: 1.8em;
         }}
         
         .finding {{
-            background: white;
+            background: #1a1a1a;
             border-radius: 8px;
             padding: 25px;
             margin-bottom: 20px;
             border-left: 5px solid #ccc;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0,255,255,0.1);
         }}
         
         .finding.critical {{
@@ -319,7 +330,7 @@ class HTMLReporter:
         
         .finding-title {{
             font-size: 1.4em;
-            color: #333;
+            color: #ffffff;
             font-weight: 600;
         }}
         
@@ -371,7 +382,7 @@ class HTMLReporter:
         }}
         
         .finding-section p {{
-            color: #555;
+            color: #cccccc;
             line-height: 1.6;
         }}
         
@@ -475,19 +486,7 @@ class HTMLReporter:
 <body>
     <div class="container">
         <div class="header">
-            <svg viewBox="0 0 1200 300" xmlns="http://www.w3.org/2000/svg" style="width: 100%; max-width: 800px; height: auto; margin: 0 auto; display: block;">
-                <rect fill="#000000" height="300" width="1200"/>
-                <text fill="#00ffff" font-family="Courier New, monospace" font-size="22" letter-spacing="4" text-anchor="middle" x="600" y="40">▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄</text>
-                <text fill="#00ffff" font-family="Courier New, monospace" font-size="22" letter-spacing="4" text-anchor="middle" x="600" y="65">█ ▄▄▄ █ ▄▄  ▄▄█ █ ▄▄▄ █ █ ▄▄▄ █</text>
-                <text fill="#ff0044" font-family="Courier New, monospace" font-size="22" letter-spacing="4" text-anchor="middle" x="600" y="90">█ ███ █ █▄▀▄ █ █ ███ █ █ ███ █</text>
-                <text fill="#ff0044" font-family="Courier New, monospace" font-size="22" letter-spacing="4" text-anchor="middle" x="600" y="115">█▄▄▄▄▄▄█ █ ▀ ▀ █ █▄▄▄▄▄▄█ █▄▄▄▄▄▄█</text>
-                <text fill="#00ffff" font-family="Courier New, monospace" font-size="22" letter-spacing="4" text-anchor="middle" x="600" y="140">▀▄▄▄▄▄▄▀▄▄▄▄▄▄▄▀▄▄▄▄▄▄▀ ▀▄▄▄▄▄▄▀</text>
-                <text fill="#666" font-family="Courier New, monospace" font-size="20" text-anchor="middle" x="600" y="170">// SHACKLED + GLITCHED //</text>
-                <rect fill="#ff0044" height="8" opacity="0.8" width="1200" x="0" y="15"/>
-                <rect fill="#00ffff" height="8" opacity="0.8" width="1200" x="0" y="277"/>
-                <text fill="#ff0044" font-family="Courier New, monospace" font-size="68" font-weight="bold" letter-spacing="12" text-anchor="middle" x="600" y="225">KAMAKAUZY</text>
-                <text fill="#00ffff" font-family="Courier New, monospace" font-size="72" font-weight="bold" letter-spacing="8" text-anchor="middle" x="600" y="280">GraphQL-Hunter</text>
-            </svg>
+            <img src="data:image/png;base64,{banner_data}" alt="GraphQL Hunter Banner" style="width: 100%; max-width: 800px; height: auto; margin: 0 auto; display: block;">
             <div class="subtitle">Security Assessment Report</div>
         </div>
         
@@ -513,7 +512,7 @@ class HTMLReporter:
         </div>
         
         <div class="summary">
-            <h2>📊 Executive Summary</h2>
+            <h2>Executive Summary</h2>
             <div class="stats-grid">
                 <div class="stat-card critical">
                     <div class="stat-number">{severity_counts['CRITICAL']}</div>
@@ -545,7 +544,7 @@ class HTMLReporter:
         </div>
         
         <div class="findings">
-            <h2>🔍 Detailed Findings</h2>
+            <h2>Detailed Findings</h2>
             {findings_html if findings else '<p style="text-align: center; color: #666; padding: 40px;">No security findings detected.</p>'}
         </div>
         
@@ -627,12 +626,12 @@ class HTMLReporter:
             # Curl command section
             curl_command = finding.get('curl_command')
             if curl_command:
-                evidence_html += f'<div class="finding-section"><h3>🔧 Exploit with cURL</h3><div class="evidence curl-command"><pre>{HTMLReporter._escape_html(curl_command)}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>'
+                evidence_html += f'<div class="finding-section"><h3>Exploit with cURL</h3><div class="evidence curl-command"><pre>{HTMLReporter._escape_html(curl_command)}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>'
             
             # Burp Suite request section
             burp_request = finding.get('burp_request')
             if burp_request:
-                evidence_html += f'<div class="finding-section"><h3>🔥 Burp Suite Request</h3><div class="evidence burp-request"><pre>{HTMLReporter._escape_html(burp_request)}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>'
+                evidence_html += f'<div class="finding-section"><h3>Burp Suite Request</h3><div class="evidence burp-request"><pre>{HTMLReporter._escape_html(burp_request)}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>'
             
             cwe_html = f'<div class="cwe-badge">{cwe}</div>' if cwe else ''
             
