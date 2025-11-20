@@ -92,6 +92,10 @@ class MutationFuzzer:
         if dangerous_mutations:
             mutation_names = ', '.join([m['name'] for m in dangerous_mutations[:5]])
             
+            # Create POC with first dangerous mutation
+            example_mutation = dangerous_mutations[0]['name'] if dangerous_mutations else 'deleteSomething'
+            poc_query = f"mutation {{ {example_mutation} {{ __typename }} }}"
+            
             findings.append(create_finding(
                 title="Potentially Dangerous Mutations Found",
                 severity="MEDIUM",
@@ -102,6 +106,7 @@ class MutationFuzzer:
                 evidence={
                     'dangerous_mutations': dangerous_mutations[:10]
                 },
+                poc=poc_query,
                 url=self.client.url
             ))
         
@@ -138,8 +143,9 @@ class MutationFuzzer:
                         evidence={
                             'mutation_count': len(unauth_mutations)
                         },
-                url=self.client.url
-            ))
+                        poc="{ __schema { mutationType { name fields { name } } } }",
+                        url=self.client.url
+                    ))
         
         except Exception:
             # If unauthenticated access fails, that's actually good
@@ -179,6 +185,11 @@ class MutationFuzzer:
         if idor_candidates:
             sample_mutations = ', '.join([m['mutation'] for m in idor_candidates[:5]])
             
+            # Create POC for testing IDOR
+            example_mutation = idor_candidates[0]['mutation'] if idor_candidates else 'editItem'
+            example_arg = idor_candidates[0]['argument'] if idor_candidates else 'id'
+            poc_query = f"mutation {{ {example_mutation}({example_arg}: 999) {{ __typename }} }}"
+            
             findings.append(create_finding(
                 title="Potential IDOR Vulnerabilities in Mutations",
                 severity="HIGH",
@@ -189,7 +200,8 @@ class MutationFuzzer:
                 evidence={
                     'idor_candidates': idor_candidates[:10]
                 },
-                poc=f"Test by calling mutations with ID parameters belonging to other users/objects"
+                poc=poc_query,
+                url=self.client.url
             ))
         
         return findings

@@ -150,6 +150,7 @@ class AuthBypassScanner:
                 evidence={
                     'sensitive_queries': sensitive_queries
                 },
+                poc=f"{{ {sensitive_queries[0]} }}",
                 url=self.client.url
             ))
         
@@ -164,6 +165,7 @@ class AuthBypassScanner:
                 evidence={
                     'sensitive_mutations': sensitive_mutations
                 },
+                poc=f"mutation {{ {sensitive_mutations[0]} {{ __typename }} }}",
                 url=self.client.url
             ))
         
@@ -212,9 +214,8 @@ class AuthBypassScanner:
                             'type': user_type.get('name'),
                             'field_count': len(fields),
                             'sample_fields': field_names
-                        },
-                url=self.client.url
-            ))
+                        }
+                    ))
         
         return findings
 

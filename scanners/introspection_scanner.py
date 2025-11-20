@@ -91,7 +91,9 @@ class IntrospectionScanner:
                     remediation="Review access controls for these fields. Ensure proper authentication and authorization checks are in place. Consider field-level permissions.",
                     evidence={
                         'sensitive_fields': sensitive_fields[:10]
-                    }
+                    },
+                    poc=f"{{ {sample_fields[0]['field']} }}",
+                    url=self.client.url
                 ))
             
             # Check for deprecated fields
@@ -108,8 +110,9 @@ class IntrospectionScanner:
                     evidence={
                         'deprecated_fields': deprecated[:10]
                     },
-                url=self.client.url
-            ))
+                    poc="{ __schema { types { fields { name isDeprecated deprecationReason } } } }",
+                    url=self.client.url
+                ))
             
             # Check for fields with arguments (potential injection points)
             fields_with_args = parser.find_fields_with_args()
@@ -126,8 +129,9 @@ class IntrospectionScanner:
                         'fields_count': len(fields_with_args),
                         'sample_fields': fields_with_args[:5]
                     },
-                url=self.client.url
-            ))
+                    poc="{ __schema { types { fields { name args { name type { name } } } } } }",
+                    url=self.client.url
+                ))
             
             # Check if mutations exist
             if complexity['has_mutations']:
@@ -143,8 +147,9 @@ class IntrospectionScanner:
                     evidence={
                         'mutation_count': mutation_count
                     },
-                url=self.client.url
-            ))
+                    poc="{ __schema { mutationType { fields { name } } } }",
+                    url=self.client.url
+                ))
             
             # Check for subscriptions
             if complexity['has_subscriptions']:
@@ -160,8 +165,9 @@ class IntrospectionScanner:
                     evidence={
                         'subscription_count': sub_count
                     },
-                url=self.client.url
-            ))
+                    poc="{ __schema { subscriptionType { fields { name } } } }",
+                    url=self.client.url
+                ))
             
         else:
             self.reporter.print_success("Introspection is DISABLED")

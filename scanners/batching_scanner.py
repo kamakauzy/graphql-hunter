@@ -68,19 +68,20 @@ class BatchingScanner:
             successful = sum(1 for r in results if r.get('data') and not r.get('errors'))
             
             if successful > 1:
-                findings.append(create_finding(
-                    title="Query Batching Enabled",
-                    severity="MEDIUM",
-                    description=f"The GraphQL endpoint allows query batching. Successfully executed {successful} queries in a single request.",
-                    impact="Query batching can be exploited for various attacks including: rate limit bypass, credential stuffing, resource exhaustion, and amplification attacks where one HTTP request triggers multiple expensive operations.",
-                    remediation="Consider disabling query batching or implementing strict limits. If batching is required, implement: per-batch rate limiting, maximum batch size limits, and complexity analysis that considers the entire batch.",
-                    cwe="CWE-400: Uncontrolled Resource Consumption",
-                    evidence={
-                        'batch_size_tested': len(batch),
-                        'successful_queries': successful
-                    },
-                    poc="Send array of queries: [{'query': '...'}, {'query': '...'}] to endpoint"
-                ))
+                    findings.append(create_finding(
+                        title="Query Batching Enabled",
+                        severity="MEDIUM",
+                        description=f"The GraphQL endpoint allows query batching. Successfully executed {successful} queries in a single request.",
+                        impact="Query batching can be exploited for various attacks including: rate limit bypass, credential stuffing, resource exhaustion, and amplification attacks where one HTTP request triggers multiple expensive operations.",
+                        remediation="Consider disabling query batching or implementing strict limits. If batching is required, implement: per-batch rate limiting, maximum batch size limits, and complexity analysis that considers the entire batch.",
+                        cwe="CWE-400: Uncontrolled Resource Consumption",
+                        evidence={
+                            'batch_size_tested': len(batch),
+                            'successful_queries': successful
+                        },
+                        poc='[{"query":"{ __typename }"},{"query":"{ __typename }"},{"query":"{ __typename }"}]',
+                        url=self.client.url
+                    ))
         
         return findings
     
