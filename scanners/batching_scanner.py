@@ -116,8 +116,9 @@ class BatchingScanner:
                             evidence={
                                 'batch_size': size,
                                 'successful_queries': successful
-                            }
-                        ))
+                            },
+                url=self.client.url
+            ))
                         return findings  # Found the issue, stop testing
             else:
                 # Batch was rejected or limited
@@ -129,8 +130,9 @@ class BatchingScanner:
                     remediation="No action needed. Keep batch limiting enabled.",
                     evidence={
                         'batch_size_limit': size
-                    }
-                ))
+                    },
+                url=self.client.url
+            ))
                 return findings  # Found the limit
         
         return findings

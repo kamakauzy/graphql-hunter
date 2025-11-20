@@ -86,7 +86,8 @@ class AliasingScanner:
                             'alias_count': count,
                             'response_time': elapsed
                         },
-                        poc=f"Query with {count} aliases: " + query[:200] + "..."
+                        poc=f"Query with {count} aliases: " + query[:200] + "...",
+                        url=self.client.url
                     ))
                     return findings  # Found the issue
             
@@ -103,8 +104,9 @@ class AliasingScanner:
                             remediation="No action needed. Keep field count limiting enabled.",
                             evidence={
                                 'alias_limit': count
-                            }
-                        ))
+                            },
+                url=self.client.url
+            ))
                         return findings
         
         return findings
@@ -151,7 +153,8 @@ class AliasingScanner:
                     'query': query_name,
                     'alias_count': 20,
                     'response_time': elapsed
-                }
+                },
+                url=self.client.url
             ))
         
         return findings

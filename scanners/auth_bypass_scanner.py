@@ -69,17 +69,19 @@ class AuthBypassScanner:
         # Try introspection without auth
         schema = unauth_client.introspect()
         if schema:
-            findings.append(create_finding(
-                title="Unauthenticated Introspection Access",
-                severity="HIGH",
-                description="The GraphQL endpoint allows full introspection queries without authentication. This enables anonymous attackers to discover the entire API structure.",
-                impact="Unauthenticated introspection allows anyone to map the complete API surface, including potentially sensitive queries and mutations. This significantly aids in reconnaissance and attack planning.",
-                remediation="Require authentication for introspection queries. Implement authentication middleware that validates credentials before processing introspection requests.",
-                cwe="CWE-306: Missing Authentication for Critical Function",
-                evidence={
-                    'unauthenticated_introspection': 'SUCCESS'
-                }
-            ))
+                findings.append(create_finding(
+                    title="Unauthenticated Introspection Access",
+                    severity="HIGH",
+                    description="The GraphQL endpoint allows full introspection queries without authentication. This enables anonymous attackers to discover the entire API structure.",
+                    impact="Unauthenticated introspection allows anyone to map the complete API surface, including potentially sensitive queries and mutations. This significantly aids in reconnaissance and attack planning.",
+                    remediation="Require authentication for introspection queries. Implement authentication middleware that validates credentials before processing introspection requests.",
+                    cwe="CWE-306: Missing Authentication for Critical Function",
+                    evidence={
+                        'unauthenticated_introspection': 'SUCCESS'
+                    },
+                    poc="{ __schema { queryType { name } } }",
+                    url=self.client.url
+                ))
         
         # Try a simple query without auth
         result = unauth_client.query('{ __typename }')
@@ -97,7 +99,9 @@ class AuthBypassScanner:
                     cwe="CWE-306: Missing Authentication for Critical Function",
                     evidence={
                         'unauthenticated_query': 'SUCCESS'
-                    }
+                    },
+                    poc="{ __typename }",
+                    url=self.client.url
                 ))
         
         return findings
@@ -145,7 +149,8 @@ class AuthBypassScanner:
                 remediation="Review authorization logic for these queries. Implement field-level and object-level authorization checks. Use role-based access control (RBAC).",
                 evidence={
                     'sensitive_queries': sensitive_queries
-                }
+                },
+                url=self.client.url
             ))
         
         if sensitive_mutations:
@@ -158,7 +163,8 @@ class AuthBypassScanner:
                 cwe="CWE-862: Missing Authorization",
                 evidence={
                     'sensitive_mutations': sensitive_mutations
-                }
+                },
+                url=self.client.url
             ))
         
         return findings
@@ -206,8 +212,9 @@ class AuthBypassScanner:
                             'type': user_type.get('name'),
                             'field_count': len(fields),
                             'sample_fields': field_names
-                        }
-                    ))
+                        },
+                url=self.client.url
+            ))
         
         return findings
 

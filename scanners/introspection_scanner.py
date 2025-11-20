@@ -107,8 +107,9 @@ class IntrospectionScanner:
                     remediation="Review deprecated fields and migrate away from them. Remove deprecated fields when no longer needed to reduce attack surface.",
                     evidence={
                         'deprecated_fields': deprecated[:10]
-                    }
-                ))
+                    },
+                url=self.client.url
+            ))
             
             # Check for fields with arguments (potential injection points)
             fields_with_args = parser.find_fields_with_args()
@@ -124,8 +125,9 @@ class IntrospectionScanner:
                     evidence={
                         'fields_count': len(fields_with_args),
                         'sample_fields': fields_with_args[:5]
-                    }
-                ))
+                    },
+                url=self.client.url
+            ))
             
             # Check if mutations exist
             if complexity['has_mutations']:
@@ -140,8 +142,9 @@ class IntrospectionScanner:
                     remediation="Ensure all mutations require proper authentication and authorization. Implement rate limiting on sensitive mutations.",
                     evidence={
                         'mutation_count': mutation_count
-                    }
-                ))
+                    },
+                url=self.client.url
+            ))
             
             # Check for subscriptions
             if complexity['has_subscriptions']:
@@ -156,8 +159,9 @@ class IntrospectionScanner:
                     remediation="Implement connection limits and rate limiting for subscriptions. Ensure proper authentication for subscription endpoints.",
                     evidence={
                         'subscription_count': sub_count
-                    }
-                ))
+                    },
+                url=self.client.url
+            ))
             
         else:
             self.reporter.print_success("Introspection is DISABLED")

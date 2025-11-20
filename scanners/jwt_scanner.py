@@ -66,8 +66,9 @@ class JWTScanner:
                     cwe="CWE-347: Improper Verification of Cryptographic Signature",
                     evidence={
                         'jwt_detected': True
-                    }
-                ))
+                    },
+                url=self.client.url
+            ))
                 
                 # Test for 'none' algorithm vulnerability
                 findings.extend(self._test_none_algorithm())

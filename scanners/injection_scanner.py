@@ -109,8 +109,9 @@ class InjectionScanner:
                     evidence={
                         'payload': payload,
                         'error': error_text[:500]
-                    }
-                ))
+                    },
+                url=self.client.url
+            ))
         
         return findings
     
@@ -217,8 +218,9 @@ class InjectionScanner:
                                     'argument': arg_name,
                                     'payload': payload,
                                     'error': error_text[:500]
-                                }
-                            ))
+                                },
+                url=self.client.url
+            ))
                             return findings
                 
                 tested_count += 1
@@ -280,8 +282,9 @@ class InjectionScanner:
                                     'argument': arg_name,
                                     'payload': payload,
                                     'error': error_text[:500]
-                                }
-                            ))
+                                },
+                url=self.client.url
+            ))
                             return findings
                 
                 tested_count += 1

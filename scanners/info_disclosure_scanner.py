@@ -117,8 +117,9 @@ class InfoDisclosureScanner:
                         evidence={
                             'query': test_query,
                             'error_message': error_msg
-                        }
-                    ))
+                        },
+                url=self.client.url
+            ))
                     break
         
         return findings
@@ -151,7 +152,8 @@ class InfoDisclosureScanner:
                 remediation="Disable debug headers in production environments. Remove or configure middleware that adds tracing/debug information.",
                 evidence={
                     'headers': found_debug_headers
-                }
+                },
+                url=self.client.url
             ))
         
         # Check for tracing in response
@@ -164,7 +166,8 @@ class InfoDisclosureScanner:
                 remediation="Disable Apollo tracing in production. Set `tracing: false` in Apollo Server configuration.",
                 evidence={
                     'tracing_enabled': True
-                }
+                },
+                url=self.client.url
             ))
         
         return findings
@@ -199,8 +202,9 @@ class InfoDisclosureScanner:
                         remediation="Configure the GraphQL server to return less detailed error messages in production while logging full details server-side.",
                         evidence={
                             'error_message': error_msg
-                        }
-                    ))
+                        },
+                url=self.client.url
+            ))
                     break
         
         return findings

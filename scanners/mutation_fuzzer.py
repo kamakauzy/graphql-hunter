@@ -101,7 +101,8 @@ class MutationFuzzer:
                 cwe="CWE-862: Missing Authorization",
                 evidence={
                     'dangerous_mutations': dangerous_mutations[:10]
-                }
+                },
+                url=self.client.url
             ))
         
         return findings
@@ -136,8 +137,9 @@ class MutationFuzzer:
                         cwe="CWE-200: Exposure of Sensitive Information to an Unauthorized Actor",
                         evidence={
                             'mutation_count': len(unauth_mutations)
-                        }
-                    ))
+                        },
+                url=self.client.url
+            ))
         
         except Exception:
             # If unauthenticated access fails, that's actually good

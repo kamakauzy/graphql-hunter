@@ -111,8 +111,9 @@ class CircularQueryScanner:
                 'type': type_name,
                 'field': field_name,
                 'circular_refs_found': len(circular_refs)
-            }
-        ))
+            },
+                url=self.client.url
+            ))
         
         # Try to build and execute a circular query if possible
         # This is complex without full type information, so we keep it simple

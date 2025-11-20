@@ -105,8 +105,9 @@ class DoSScanner:
                             remediation="No action needed. Keep depth limiting enabled.",
                             evidence={
                                 'depth_limit': depth
-                            }
-                        ))
+                            },
+                url=self.client.url
+            ))
                         return findings  # Found the limit, stop testing
             
             # If query succeeded with high depth, that's a problem
@@ -121,8 +122,9 @@ class DoSScanner:
                     evidence={
                         'depth_tested': depth,
                         'accepted': True
-                    }
-                ))
+                    },
+                url=self.client.url
+            ))
                 return findings  # One finding is enough
         
         return findings
@@ -156,7 +158,8 @@ class DoSScanner:
                 evidence={
                     'field_count': field_count,
                     'elapsed_time': elapsed
-                }
+                },
+                url=self.client.url
             ))
         
         return findings
@@ -193,8 +196,9 @@ class DoSScanner:
                         evidence={
                             'type': type_name,
                             'field': field.get('name')
-                        }
-                    ))
+                        },
+                url=self.client.url
+            ))
                     break  # One finding per type is enough
             
             if len(findings) >= 3:  # Limit findings for circular refs
@@ -223,8 +227,9 @@ class DoSScanner:
                         remediation="No action needed. Keep complexity limiting enabled.",
                         evidence={
                             'complexity_check': 'enabled'
-                        }
-                    ))
+                        },
+                url=self.client.url
+            ))
                     return findings
         
         # If complex query succeeded, complexity limiting may not be in place
@@ -238,7 +243,8 @@ class DoSScanner:
                 cwe="CWE-400: Uncontrolled Resource Consumption",
                 evidence={
                     'complex_query_accepted': True
-                }
+                },
+                url=self.client.url
             ))
         
         return findings
