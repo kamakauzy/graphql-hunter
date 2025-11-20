@@ -40,7 +40,20 @@ class HTMLReporter:
         }
         
         total = sum(severity_counts.values())
-        risk_level = summary.get('risk_level', 'UNKNOWN')
+        
+        # Calculate risk level based on severity counts
+        if severity_counts['CRITICAL'] > 0:
+            risk_level = 'CRITICAL'
+        elif severity_counts['HIGH'] > 0:
+            risk_level = 'HIGH'
+        elif severity_counts['MEDIUM'] > 0:
+            risk_level = 'MEDIUM'
+        elif severity_counts['LOW'] > 0:
+            risk_level = 'LOW'
+        elif severity_counts['INFO'] > 0:
+            risk_level = 'INFO'
+        else:
+            risk_level = 'INFO'
         
         # Build findings HTML
         findings_html = HTMLReporter._build_findings_html(findings)
@@ -404,7 +417,14 @@ class HTMLReporter:
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎯 GraphQL Hunter</h1>
+            <pre style="color: white; line-height: 1.2; margin-bottom: 10px; font-size: 0.5em;">
+   ____                 _      ___  _       _   _             _            
+  / ___|_ __ __ _ _ __ | |__  / _ \| |     | | | |_   _ _ __ | |_ ___ _ __ 
+ | |  _| '__/ _` | '_ \| '_ \| | | | |     | |_| | | | | '_ \| __/ _ \ '__|
+ | |_| | | | (_| | |_) | | | | |_| | |___  |  _  | |_| | | | | ||  __/ |   
+  \____|_|  \__,_| .__/|_| |_|\__\_\_____| |_| |_|\__,_|_| |_|\__\___|_|   
+                 |_|                                                        
+            </pre>
             <div class="subtitle">Security Assessment Report</div>
         </div>
         
