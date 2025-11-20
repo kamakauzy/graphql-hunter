@@ -1,10 +1,19 @@
-# GraphQL Hunter 🎯
+# GraphQL Hunter
+
+```
+   ____                 _      ___  _       _   _             _            
+  / ___|_ __ __ _ _ __ | |__  / _ \| |     | | | |_   _ _ __ | |_ ___ _ __ 
+ | |  _| '__/ _` | '_ \| '_ \| | | | |     | |_| | | | | '_ \| __/ _ \ '__|
+ | |_| | | | (_| | |_) | | | | |_| | |___  |  _  | |_| | | | | ||  __/ |   
+  \____|_|  \__,_| .__/|_| |_|\__\_\_____| |_| |_|\__,_|_| |_|\__\___|_|   
+                 |_|                                                        
+```
 
 A comprehensive GraphQL security testing tool that performs automated vulnerability scanning on GraphQL APIs. GraphQL Hunter tests for a wide range of security issues including injection vulnerabilities, authentication bypass, DoS vectors, and more.
 
 ## Features
 
-### 🔍 Comprehensive Security Scanning
+### [+] Comprehensive Security Scanning
 
 - **Introspection Analysis** - Detects if introspection is enabled and analyzes the schema for sensitive fields
 - **Information Disclosure** - Tests for stack traces, debug mode, verbose errors, and field suggestions
@@ -15,7 +24,7 @@ A comprehensive GraphQL security testing tool that performs automated vulnerabil
 - **Aliasing Abuse** - Detects field aliasing vulnerabilities that can cause resource exhaustion
 - **Mutation Security** - Identifies dangerous mutations, IDOR vulnerabilities, and unauthorized access
 
-### 🎨 User-Friendly Interface
+### [+] User-Friendly Interface
 
 - Colored terminal output for easy reading
 - Real-time progress reporting
@@ -23,7 +32,7 @@ A comprehensive GraphQL security testing tool that performs automated vulnerabil
 - Severity-based classification (CRITICAL, HIGH, MEDIUM, LOW, INFO)
 - JSON export for integration with other tools
 
-### ⚙️ Flexible Configuration
+### [+] Flexible Configuration
 
 - **Scan Profiles**: Quick, Standard, Deep, and Stealth modes
 - **Safe Mode**: Skips potentially destructive DoS tests
@@ -312,27 +321,30 @@ Proxy Settings:
 
 GraphQL Hunter is designed for **authorized security testing only**. Before testing:
 
-1. ✅ Obtain written permission from the API owner
-2. ✅ Test in a non-production environment when possible
-3. ✅ Use `--safe-mode` to avoid DoS tests
-4. ✅ Use `--delay` to avoid overwhelming the target
-5. ✅ Review findings carefully - false positives are possible
+1. Obtain written permission from the API owner
+2. Test in a non-production environment when possible
+3. Use `--safe-mode` to avoid DoS tests
+4. Use `--delay` to avoid overwhelming the target
+5. Review findings carefully - false positives are possible
 
-**⚠️ WARNING**: Unauthorized testing may be illegal. Always get permission first.
+**[!] WARNING**: Unauthorized testing may be illegal. Always get permission first.
 
 ## Example Output
 
 ```
-╔═══════════════════════════════════════════════════════════════╗
-║              GraphQL Security Scanner v1.0                    ║
-╚═══════════════════════════════════════════════════════════════╝
+===============================================================
+                                                               
+   GRAPHQL HUNTER - Security Scanner v1.0                     
+   Comprehensive GraphQL API Security Testing                 
+                                                               
+===============================================================
 
 [i] Target: https://api.example.com/graphql
 [i] Profile: standard
-──────────────────────────────────────────────────────────────────
+----------------------------------------------------------------------
 
 [*] Introspection
-──────────────────────────────────────────────────────────────────
+----------------------------------------------------------------------
 [!] Introspection is ENABLED
 
 [MEDIUM] GraphQL Introspection Enabled
@@ -341,7 +353,7 @@ GraphQL Hunter is designed for **authorized security testing only**. Before test
   Remediation: Disable introspection in production environments...
 
 [*] SCAN SUMMARY
-──────────────────────────────────────────────────────────────────
+----------------------------------------------------------------------
 
 Total Findings: 5
   Critical: 1
@@ -357,7 +369,7 @@ Overall Risk: CRITICAL - Immediate action required!
 ### Connection Errors
 
 ```
-[✗] Failed to initialize client: Connection failed
+[X] Failed to initialize client: Connection failed
 ```
 **Solution**: Check URL, network connectivity, and SSL certificates
 
@@ -383,6 +395,14 @@ This is a security tool - contributions should focus on:
 - Reducing false positives
 - Better reporting formats
 
+## Contact
+
+For questions, suggestions, or security research collaboration:
+
+**Brad Crawford**  
+Email: brad@securit360.com  
+GitHub: [@kamakauzy](https://github.com/kamakauzy)
+
 ## License
 
 This tool is provided for educational and authorized testing purposes only.
@@ -396,15 +416,10 @@ This tool is provided for educational and authorized testing purposes only.
 - The authors are not responsible for misuse of this tool
 - Always follow responsible disclosure practices
 
-## Credits
-
-Created as a comprehensive GraphQL security assessment tool.
-
 ## Version
 
 GraphQL Hunter v1.0 - November 2025
 
 ---
 
-**Happy (Ethical) Hunting! 🎯**
-
+**[+] Happy (Ethical) Hunting!**
