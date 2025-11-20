@@ -41,43 +41,42 @@ A comprehensive GraphQL security testing tool that performs automated vulnerabil
 - **Proxy Support**: HTTP/HTTPS/SOCKS proxy configuration
 - **Selective Scanning**: Skip specific scanners as needed
 
-## Installation
+## Quick Start
 
-### Prerequisites
-
-- Python 3.8 or higher
-- pip package manager
-
-### Install Dependencies
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/kamakauzy/graphql-hunter.git
+cd graphql-hunter
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Run a test scan
+python graphql-hunter.py -u https://countries.trevorblades.com/graphql
 ```
 
-### Required Packages
-
-- `requests` - HTTP client library
-- `colorama` - Cross-platform colored terminal output
-- `pyyaml` - YAML configuration file support
-
-## Usage
-
-### Basic Scan
+### Basic Usage
 
 ```bash
+# Basic scan
 python graphql-hunter.py -u https://api.example.com/graphql
-```
 
-### Scan with Authentication
-
-```bash
-# Using Bearer token
+# Authenticated scan with token
 python graphql-hunter.py -u https://api.example.com/graphql -t YOUR_TOKEN
 
-# Using custom headers
-python graphql-hunter.py -u https://api.example.com/graphql -H "Authorization: Bearer TOKEN"
-python graphql-hunter.py -u https://api.example.com/graphql -H "X-API-Key: KEY" -H "X-User-ID: 123"
+# Deep scan with output
+python graphql-hunter.py -u https://api.example.com/graphql -p deep -o results.json
+
+# Safe mode (skip DoS tests)
+python graphql-hunter.py -u https://api.example.com/graphql --safe-mode
+
+# Stealth mode with delays
+python graphql-hunter.py -u https://api.example.com/graphql -p stealth --delay 2
 ```
+
+## Usage Guide
 
 ### Scan Profiles
 
@@ -95,12 +94,15 @@ python graphql-hunter.py -u https://api.example.com/graphql -p deep
 python graphql-hunter.py -u https://api.example.com/graphql -p stealth --delay 2
 ```
 
-### Safe Mode
-
-Skip potentially destructive DoS tests:
+### Authentication
 
 ```bash
-python graphql-hunter.py -u https://api.example.com/graphql --safe-mode
+# Using Bearer token
+python graphql-hunter.py -u https://api.example.com/graphql -t YOUR_TOKEN
+
+# Using custom headers
+python graphql-hunter.py -u https://api.example.com/graphql -H "Authorization: Bearer TOKEN"
+python graphql-hunter.py -u https://api.example.com/graphql -H "X-API-Key: KEY" -H "X-User-ID: 123"
 ```
 
 ### Output Options
@@ -139,8 +141,65 @@ python graphql-hunter.py -u https://api.example.com/graphql \
 # HTTP proxy
 python graphql-hunter.py -u https://api.example.com/graphql --proxy http://127.0.0.1:8080
 
-# Use with Burp Suite
-python graphql-hunter.py -u https://api.example.com/graphql --proxy http://127.0.0.1:8080
+# Use with Burp Suite for detailed inspection
+python graphql-hunter.py -u https://api.example.com/graphql --proxy http://127.0.0.1:8080 -v
+```
+
+## Examples & Test Cases
+
+### Public Test Endpoints
+
+Test GraphQL Hunter against these public GraphQL APIs:
+
+```bash
+# Countries API (Recommended for testing)
+python graphql-hunter.py -u https://countries.trevorblades.com/graphql
+
+# SpaceX API
+python graphql-hunter.py -u https://api.spacex.land/graphql/
+
+# GitHub GraphQL API (requires authentication)
+python graphql-hunter.py -u https://api.github.com/graphql -t YOUR_GITHUB_TOKEN
+```
+
+### Example Scenarios
+
+**Scenario 1: Testing a New API**
+```bash
+# Start with a quick scan to get an overview
+python graphql-hunter.py -u https://api.example.com/graphql -p quick
+
+# If issues are found, run a deep scan
+python graphql-hunter.py -u https://api.example.com/graphql -p deep -o results.json
+
+# Review the results
+cat results.json | python -m json.tool
+```
+
+**Scenario 2: Authenticated Testing**
+```bash
+# Test with API key
+python graphql-hunter.py -u https://api.example.com/graphql \
+  -H "X-API-Key: your-api-key-here" \
+  -o authenticated-results.json
+
+# Test with JWT token
+python graphql-hunter.py -u https://api.example.com/graphql \
+  -t eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... \
+  -v
+```
+
+**Scenario 3: Focus on Specific Vulnerabilities**
+```bash
+# Only test for injection vulnerabilities
+python graphql-hunter.py -u https://api.example.com/graphql \
+  --skip-info-disclosure \
+  --skip-auth \
+  --skip-dos \
+  --skip-batching \
+  --skip-aliasing \
+  --skip-circular \
+  --skip-mutation-fuzzing
 ```
 
 ## Command Line Options
@@ -194,6 +253,31 @@ Proxy Settings:
 - `1` - High severity findings detected
 - `2` - Critical severity findings detected
 - `130` - Scan interrupted by user (Ctrl+C)
+
+### Interpreting Findings
+
+Example critical finding:
+```json
+{
+  "title": "SQL Injection Vulnerability Detected",
+  "severity": "CRITICAL",
+  "description": "SQL error messages detected when testing query.field with injection payload",
+  "impact": "SQL injection allows attackers to manipulate database queries...",
+  "remediation": "Use parameterized queries or ORM methods...",
+  "cwe": "CWE-89: SQL Injection",
+  "evidence": {
+    "query": "exampleQuery",
+    "argument": "id",
+    "payload": "' OR '1'='1"
+  }
+}
+```
+
+**Response Steps:**
+1. Verify the finding manually
+2. Fix the vulnerability
+3. Re-scan to confirm fix
+4. Document the fix
 
 ## Common Vulnerabilities Detected
 
@@ -317,17 +401,29 @@ Proxy Settings:
    });
    ```
 
-## Testing on Your Own APIs
+## Testing Guidelines
+
+### Before Testing Your Own APIs
 
 GraphQL Hunter is designed for **authorized security testing only**. Before testing:
 
 1. Obtain written permission from the API owner
 2. Test in a non-production environment when possible
-3. Use `--safe-mode` to avoid DoS tests
-4. Use `--delay` to avoid overwhelming the target
+3. Use `--safe-mode` to avoid DoS tests initially
+4. Start with the quick profile and gradually increase depth
 5. Review findings carefully - false positives are possible
 
 **[!] WARNING**: Unauthorized testing may be illegal. Always get permission first.
+
+### False Positives
+
+Some findings may be false positives or acceptable in certain contexts:
+
+- **Introspection Enabled** - May be acceptable in development environments
+- **Verbose Errors** - May be intentional for debugging
+- **Circular References** - Common pattern; risk depends on depth limits being enforced
+
+Always verify findings manually before reporting them as vulnerabilities.
 
 ## Example Output
 
@@ -385,15 +481,47 @@ Overall Risk: CRITICAL - Immediate action required!
 ```
 [i] Schema not available, skipping...
 ```
-**Solution**: Introspection is disabled. Some tests will be limited.
+**Solution**: Introspection is disabled. Some tests will be limited but basic checks will still run.
+
+## Project Structure
+
+```
+graphql-hunter/
+├── graphql-hunter.py           # Main CLI application
+├── requirements.txt            # Python dependencies
+├── README.md                   # This file
+├── quickstart.bat              # Windows quick start script
+├── test_tool.py                # Self-test script
+├── config/
+│   └── payloads.yaml          # Attack payloads and configuration
+├── lib/
+│   ├── graphql_client.py      # GraphQL HTTP client
+│   ├── reporter.py            # Output formatting
+│   ├── utils.py               # Utility functions
+│   └── introspection.py       # Schema parsing
+└── scanners/
+    ├── introspection_scanner.py       # Introspection tests
+    ├── info_disclosure_scanner.py     # Information disclosure tests
+    ├── auth_bypass_scanner.py         # Authentication tests
+    ├── injection_scanner.py           # Injection tests
+    ├── dos_scanner.py                 # DoS tests
+    ├── batching_scanner.py            # Batching tests
+    ├── aliasing_scanner.py            # Aliasing tests
+    ├── circular_query_scanner.py      # Circular query tests
+    └── mutation_fuzzer.py             # Mutation tests
+```
 
 ## Contributing
 
-This is a security tool - contributions should focus on:
+Contributions are welcome! This is a security tool, so contributions should focus on:
+
 - Adding new vulnerability checks
 - Improving detection accuracy
 - Reducing false positives
 - Better reporting formats
+- Documentation improvements
+
+Please ensure any contributions maintain the tool's ethical use focus and include appropriate documentation.
 
 ## Contact
 
