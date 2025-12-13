@@ -6,7 +6,7 @@ GraphQL Client - Handles all GraphQL requests and introspection
 import requests
 import json
 import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 
 
 class GraphQLClient:

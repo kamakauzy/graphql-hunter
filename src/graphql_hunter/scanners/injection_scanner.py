@@ -2,14 +2,9 @@
 """
 Injection Scanner - Tests for SQL, NoSQL, and Command injection vulnerabilities
 """
-
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
-
-from graphql_client import GraphQLClient
-from reporter import Reporter
-from utils import create_finding, detect_sql_error, detect_nosql_error
+from graphql_hunter.lib.graphql_client import GraphQLClient
+from graphql_hunter.lib.reporter import Reporter
+from graphql_hunter.lib.utils import create_finding, detect_stack_trace,detect_nosql_error
 from typing import List, Dict
 
 

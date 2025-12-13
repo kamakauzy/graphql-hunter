@@ -3,13 +3,11 @@
 Information Disclosure Scanner - Tests for debug mode, stack traces, and verbose errors
 """
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
-from graphql_client import GraphQLClient
-from reporter import Reporter
-from utils import create_finding, detect_stack_trace
+
+from graphql_hunter.lib.graphql_client import GraphQLClient
+from graphql_hunter.lib.reporter import Reporter
+from graphql_hunter.lib.utils import create_finding, detect_stack_trace
 from typing import List, Dict
 
 

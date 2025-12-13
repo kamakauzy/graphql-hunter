@@ -4,7 +4,7 @@ Utility functions for GraphQL Hunter
 """
 
 import re
-from typing import Dict, List, Any, Optional
+from typing import Dict, Optional
 
 
 def extract_type_name(type_def: Dict) -> str:

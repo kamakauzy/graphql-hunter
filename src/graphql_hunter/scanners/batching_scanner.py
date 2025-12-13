@@ -2,14 +2,9 @@
 """
 Batching Scanner - Tests for batch query attacks
 """
-
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
-
-from graphql_client import GraphQLClient
-from reporter import Reporter
-from utils import create_finding
+from graphql_hunter.lib.graphql_client import GraphQLClient
+from graphql_hunter.lib.reporter import Reporter
+from graphql_hunter.lib.utils import create_finding
 from typing import List, Dict
 
 

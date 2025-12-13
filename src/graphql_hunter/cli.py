@@ -7,26 +7,26 @@ import argparse
 import sys
 import json
 from datetime import datetime
-from pathlib import Path
 
-# Add lib directory to path
-sys.path.insert(0, str(Path(__file__).parent / "lib"))
-sys.path.insert(0, str(Path(__file__).parent / "scanners"))
+from graphql_hunter.scanners import (
+IntrospectionScanner,
+InfoDisclosureScanner,
+AuthBypassScanner,
+InjectionScanner,
+DoSScanner,
+BatchingScanner,
+AliasingScanner,
+CircularQueryScanner,
+MutationFuzzer,
+XSSScanner,
+JWTScanner,
+    )
 
-from graphql_client import GraphQLClient
-from reporter import Reporter
-from html_reporter import HTMLReporter
-from introspection_scanner import IntrospectionScanner
-from info_disclosure_scanner import InfoDisclosureScanner
-from auth_bypass_scanner import AuthBypassScanner
-from injection_scanner import InjectionScanner
-from dos_scanner import DoSScanner
-from batching_scanner import BatchingScanner
-from aliasing_scanner import AliasingScanner
-from circular_query_scanner import CircularQueryScanner
-from mutation_fuzzer import MutationFuzzer
-from xss_scanner import XSSScanner
-from jwt_scanner import JWTScanner
+
+
+from graphql_hunter.lib.graphql_client import GraphQLClient
+from graphql_hunter.lib.reporter import Reporter
+from graphql_hunter.lib.html_reporter import HTMLReporter
 
 
 def parse_args():

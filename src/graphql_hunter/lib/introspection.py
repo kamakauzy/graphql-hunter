@@ -3,7 +3,7 @@
 Schema introspection utilities
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 class SchemaParser:

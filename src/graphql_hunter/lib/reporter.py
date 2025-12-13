@@ -3,7 +3,7 @@
 Reporter - Formats and displays findings with colored output
 """
 
-from colorama import init, Fore, Back, Style
+from colorama import init, Fore, Style
 from typing import Dict, List
 import json
 
