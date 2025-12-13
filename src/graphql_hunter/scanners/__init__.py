@@ -13,15 +13,15 @@ from .xss_scanner import XSSScanner
 
 # For convenience, also make them available in __all__
 __all__ = [
-    'AliasingScanner',
-    'AuthBypassScanner',
-    'BatchingScanner',
-    'CircularQueryScanner',
-    'DoSScanner',
-    'InfoDisclosureScanner',
-    'InjectionScanner',
-    'IntrospectionScanner',
-    'JWTScanner',
-    'MutationFuzzer',
-    'XSSScanner'
+    "AliasingScanner",
+    "AuthBypassScanner",
+    "BatchingScanner",
+    "CircularQueryScanner",
+    "DoSScanner",
+    "InfoDisclosureScanner",
+    "InjectionScanner",
+    "IntrospectionScanner",
+    "JWTScanner",
+    "MutationFuzzer",
+    "XSSScanner",
 ]

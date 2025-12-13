@@ -9,12 +9,12 @@ from datetime import datetime
 
 class HTMLReporter:
     """Generate HTML security reports"""
-    
+
     @staticmethod
     def generate(metadata: Dict, findings: List[Dict], summary: Dict, output_file: str):
         """
         Generate HTML report
-        
+
         Args:
             metadata: Scan metadata
             findings: List of findings
@@ -22,59 +22,66 @@ class HTMLReporter:
             output_file: Output file path
         """
         html = HTMLReporter._build_html(metadata, findings, summary)
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
+
+        with open(output_file, "w", encoding="utf-8") as f:
             f.write(html)
-    
+
     @staticmethod
     def _build_html(metadata: Dict, findings: List[Dict], summary: Dict) -> str:
         """Build complete HTML document"""
-        
+
         # Read and encode banner image
         import base64
         import os
+
         banner_data = ""
-        banner_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'graphql-hunter-banner.png')
+        banner_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "graphql-hunter-banner.png"
+        )
         try:
-            with open(banner_path, 'rb') as f:
-                banner_data = base64.b64encode(f.read()).decode('utf-8')
+            with open(banner_path, "rb") as f:
+                banner_data = base64.b64encode(f.read()).decode("utf-8")
         except Exception:
             pass  # If banner not found, just skip it
-        
+
         # Get severity counts - count from actual findings
         severity_counts = {
-            'CRITICAL': sum(1 for f in findings if f.get('severity', '').upper() == 'CRITICAL'),
-            'HIGH': sum(1 for f in findings if f.get('severity', '').upper() == 'HIGH'),
-            'MEDIUM': sum(1 for f in findings if f.get('severity', '').upper() == 'MEDIUM'),
-            'LOW': sum(1 for f in findings if f.get('severity', '').upper() == 'LOW'),
-            'INFO': sum(1 for f in findings if f.get('severity', '').upper() == 'INFO')
+            "CRITICAL": sum(
+                1 for f in findings if f.get("severity", "").upper() == "CRITICAL"
+            ),
+            "HIGH": sum(1 for f in findings if f.get("severity", "").upper() == "HIGH"),
+            "MEDIUM": sum(
+                1 for f in findings if f.get("severity", "").upper() == "MEDIUM"
+            ),
+            "LOW": sum(1 for f in findings if f.get("severity", "").upper() == "LOW"),
+            "INFO": sum(1 for f in findings if f.get("severity", "").upper() == "INFO"),
         }
-        
+
         total = sum(severity_counts.values())
-        
+
         # Calculate risk level based on severity counts
-        if severity_counts['CRITICAL'] > 0:
-            risk_level = 'CRITICAL'
-        elif severity_counts['HIGH'] > 0:
-            risk_level = 'HIGH'
-        elif severity_counts['MEDIUM'] > 0:
-            risk_level = 'MEDIUM'
-        elif severity_counts['LOW'] > 0:
-            risk_level = 'LOW'
-        elif severity_counts['INFO'] > 0:
-            risk_level = 'INFO'
+        if severity_counts["CRITICAL"] > 0:
+            risk_level = "CRITICAL"
+        elif severity_counts["HIGH"] > 0:
+            risk_level = "HIGH"
+        elif severity_counts["MEDIUM"] > 0:
+            risk_level = "MEDIUM"
+        elif severity_counts["LOW"] > 0:
+            risk_level = "LOW"
+        elif severity_counts["INFO"] > 0:
+            risk_level = "INFO"
         else:
-            risk_level = 'INFO'
-        
+            risk_level = "INFO"
+
         # Build findings HTML
         findings_html = HTMLReporter._build_findings_html(findings)
-        
+
         html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GraphQL Hunter Security Report - {metadata.get('target', 'Unknown')}</title>
+    <title>GraphQL Hunter Security Report - {metadata.get("target", "Unknown")}</title>
     <style>
         * {{
             margin: 0;
@@ -494,19 +501,19 @@ class HTMLReporter:
             <div class="metadata-grid">
                 <div class="metadata-item">
                     <label>Target URL</label>
-                    <value>{metadata.get('target', 'N/A')}</value>
+                    <value>{metadata.get("target", "N/A")}</value>
                 </div>
                 <div class="metadata-item">
                     <label>Scan Profile</label>
-                    <value>{metadata.get('profile', 'N/A').upper()}</value>
+                    <value>{metadata.get("profile", "N/A").upper()}</value>
                 </div>
                 <div class="metadata-item">
                     <label>Scan Date</label>
-                    <value>{metadata.get('timestamp', 'N/A')}</value>
+                    <value>{metadata.get("timestamp", "N/A")}</value>
                 </div>
                 <div class="metadata-item">
                     <label>Safe Mode</label>
-                    <value>{"Enabled" if metadata.get('safe_mode') else "Disabled"}</value>
+                    <value>{"Enabled" if metadata.get("safe_mode") else "Disabled"}</value>
                 </div>
             </div>
         </div>
@@ -515,23 +522,23 @@ class HTMLReporter:
             <h2>Executive Summary</h2>
             <div class="stats-grid">
                 <div class="stat-card critical">
-                    <div class="stat-number">{severity_counts['CRITICAL']}</div>
+                    <div class="stat-number">{severity_counts["CRITICAL"]}</div>
                     <div class="stat-label">Critical</div>
                 </div>
                 <div class="stat-card high">
-                    <div class="stat-number">{severity_counts['HIGH']}</div>
+                    <div class="stat-number">{severity_counts["HIGH"]}</div>
                     <div class="stat-label">High</div>
                 </div>
                 <div class="stat-card medium">
-                    <div class="stat-number">{severity_counts['MEDIUM']}</div>
+                    <div class="stat-number">{severity_counts["MEDIUM"]}</div>
                     <div class="stat-label">Medium</div>
                 </div>
                 <div class="stat-card low">
-                    <div class="stat-number">{severity_counts['LOW']}</div>
+                    <div class="stat-number">{severity_counts["LOW"]}</div>
                     <div class="stat-label">Low</div>
                 </div>
                 <div class="stat-card info">
-                    <div class="stat-number">{severity_counts['INFO']}</div>
+                    <div class="stat-number">{severity_counts["INFO"]}</div>
                     <div class="stat-label">Info</div>
                 </div>
             </div>
@@ -550,7 +557,7 @@ class HTMLReporter:
         
         <div class="footer">
             <p><strong>GraphQL Hunter v1.0</strong></p>
-            <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p>Generated on {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
             <p>For questions or support, contact <a href="mailto:brad@securit360.com">brad@securit360.com</a></p>
             <p style="margin-top: 15px; font-size: 0.9em; opacity: 0.8;">
                 This report is for authorized security testing only. Always obtain proper authorization before testing.
@@ -582,59 +589,58 @@ class HTMLReporter:
     </script>
 </body>
 </html>"""
-        
+
         return html
-    
+
     @staticmethod
     def _build_findings_html(findings: List[Dict]) -> str:
         """Build findings section HTML"""
         if not findings:
-            return ''
-        
+            return ""
+
         # Sort findings by severity (CRITICAL -> HIGH -> MEDIUM -> LOW -> INFO)
-        severity_order = {
-            'CRITICAL': 0,
-            'HIGH': 1,
-            'MEDIUM': 2,
-            'LOW': 3,
-            'INFO': 4
-        }
-        sorted_findings = sorted(findings, key=lambda x: severity_order.get(x.get('severity', 'INFO').upper(), 5))
-        
+        severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
+        sorted_findings = sorted(
+            findings,
+            key=lambda x: severity_order.get(x.get("severity", "INFO").upper(), 5),
+        )
+
         html_parts = []
-        
+
         for finding in sorted_findings:
-            severity = finding.get('severity', 'INFO').lower()
-            title = finding.get('title', 'Unknown Issue')
-            description = finding.get('description', 'No description provided')
-            impact = finding.get('impact', 'Impact not specified')
-            remediation = finding.get('remediation', 'No remediation guidance available')
-            cwe = finding.get('cwe', '')
-            evidence = finding.get('evidence', {})
-            poc = finding.get('poc', '')
-            
+            severity = finding.get("severity", "INFO").lower()
+            title = finding.get("title", "Unknown Issue")
+            description = finding.get("description", "No description provided")
+            impact = finding.get("impact", "Impact not specified")
+            remediation = finding.get(
+                "remediation", "No remediation guidance available"
+            )
+            cwe = finding.get("cwe", "")
+            evidence = finding.get("evidence", {})
+            poc = finding.get("poc", "")
+
             # Build evidence HTML
-            evidence_html = ''
+            evidence_html = ""
             if evidence:
-                evidence_str = '\n'.join([f"{k}: {v}" for k, v in evidence.items()])
+                evidence_str = "\n".join([f"{k}: {v}" for k, v in evidence.items()])
                 evidence_html = f'<div class="evidence"><pre>{HTMLReporter._escape_html(evidence_str)}</pre></div>'
-            
+
             # POC section
             if poc:
                 evidence_html += f'<div class="finding-section"><h3>Proof of Concept</h3><div class="evidence"><pre>{HTMLReporter._escape_html(poc)}</pre></div></div>'
-            
+
             # Curl command section
-            curl_command = finding.get('curl_command')
+            curl_command = finding.get("curl_command")
             if curl_command:
                 evidence_html += f'<div class="finding-section"><h3>Exploit with cURL</h3><div class="evidence curl-command"><pre>{HTMLReporter._escape_html(curl_command)}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>'
-            
+
             # Burp Suite request section
-            burp_request = finding.get('burp_request')
+            burp_request = finding.get("burp_request")
             if burp_request:
                 evidence_html += f'<div class="finding-section"><h3>Burp Suite Request</h3><div class="evidence burp-request"><pre>{HTMLReporter._escape_html(burp_request)}</pre><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></div></div>'
-            
-            cwe_html = f'<div class="cwe-badge">{cwe}</div>' if cwe else ''
-            
+
+            cwe_html = f'<div class="cwe-badge">{cwe}</div>' if cwe else ""
+
             finding_html = f"""
             <div class="finding {severity}">
                 <div class="finding-header">
@@ -661,21 +667,21 @@ class HTMLReporter:
                 {cwe_html}
             </div>
             """
-            
+
             html_parts.append(finding_html)
-        
-        return '\n'.join(html_parts)
-    
+
+        return "\n".join(html_parts)
+
     @staticmethod
     def _escape_html(text: str) -> str:
         """Escape HTML special characters"""
         if not isinstance(text, str):
             text = str(text)
-        
-        return (text
-                .replace('&', '&amp;')
-                .replace('<', '&lt;')
-                .replace('>', '&gt;')
-                .replace('"', '&quot;')
-                .replace("'", '&#x27;'))
 
+        return (
+            text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&#x27;")
+        )
