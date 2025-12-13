@@ -174,14 +174,14 @@ class AuthBypassScanner:
         findings = []
         
         # Try to query multiple fields that might have different auth requirements
-        test_queries = [
-            # Try to access common user fields
-            '''
-            query TestFieldAuth {
-              __typename
-            }
-            ''',
-        ]
+        #test_queries = [
+        #    # Try to access common user fields
+        #    '''
+        #    query TestFieldAuth {
+        #      __typename
+        #    }
+        #    ''',
+        #]
         
         # If we have schema, try to query fields that look sensitive
         if self.client.schema:

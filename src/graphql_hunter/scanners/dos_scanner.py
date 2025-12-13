@@ -66,9 +66,9 @@ class DoSScanner:
             # Build nested query
             query = self._build_nested_query(depth)
             
-            start_time = time.time()
+            #start_time = time.time()
             result = self.client.query(query)
-            elapsed = time.time() - start_time
+            #elapsed = time.time() - start_time
             
             # Check for timeout or error
             if result.get('_timeout'):

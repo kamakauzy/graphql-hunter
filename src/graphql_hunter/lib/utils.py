@@ -257,7 +257,7 @@ def generate_burp_request(url: str, query: str) -> str:
     parsed = urlparse(url)
     host = parsed.netloc
     path = parsed.path or '/graphql'
-    scheme = parsed.scheme
+    # scheme = parsed.scheme
     
     # Escape query for JSON
     body = json.dumps({"query": query})

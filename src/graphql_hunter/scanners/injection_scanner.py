@@ -4,7 +4,7 @@ Injection Scanner - Tests for SQL, NoSQL, and Command injection vulnerabilities
 """
 from graphql_hunter.lib.graphql_client import GraphQLClient
 from graphql_hunter.lib.reporter import Reporter
-from graphql_hunter.lib.utils import create_finding, detect_stack_trace,detect_nosql_error
+from graphql_hunter.lib.utils import create_finding, detect_nosql_error, detect_sql_error
 from typing import List, Dict
 
 
