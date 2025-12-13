@@ -1,4 +1,3 @@
-import pytest
 from graphql_hunter.cli import main
 
 
