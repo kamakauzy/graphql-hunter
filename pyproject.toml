@@ -1,0 +1,38 @@
+[project]
+name = "graphql-hunter"
+version = "1.1.0"
+description = "Let's make quick work of GraphQL instances ;)"
+readme = "README.md"
+authors = [
+    { name = "kamakauzy", email = "bradcausey@gmail.com" }
+]
+requires-python = ">=3.8"
+dependencies = [
+    "colorama>=0.4.6",
+    "pyyaml>=6.0.1",
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+graphql-hunter = "graphql_hunter.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.13,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.9",
+    "pytest>=8.0",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.format]
+indent-style = "space"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+pythonpath ='src'
+addopts = '-ra --maxfail=1'

@@ -51,34 +51,30 @@ A comprehensive GraphQL security testing tool that hunts down vulnerabilities in
 ### Installation
 
 ```bash
-# Clone the repository (you know, the usual dance)
-git clone https://github.com/kamakauzy/graphql-hunter.git
-cd graphql-hunter
-
-# Install dependencies (shouldn't take longer than making coffee)
-pip install -r requirements.txt
+# Fast and easy
+uv tool install git+https://github.com/Hi-Timofey/graphql-hunter
 
 # Run a test scan (prepare for bad news)
-python graphql-hunter.py -u https://countries.trevorblades.com/graphql
+graphql-hunter  -u https://countries.trevorblades.com/graphql
 ```
 
 ### Basic Usage
 
 ```bash
 # Basic scan (the gentle introduction)
-python graphql-hunter.py -u https://api.example.com/graphql
+graphql-hunter  -u https://api.example.com/graphql
 
 # Authenticated scan (pretend you're a real user)
-python graphql-hunter.py -u https://api.example.com/graphql -t YOUR_TOKEN
+graphql-hunter  -u https://api.example.com/graphql -t YOUR_TOKEN
 
 # Deep scan with output (for when you want ALL the bad news)
-python graphql-hunter.py -u https://api.example.com/graphql -p deep -o results.json
+graphql-hunter  -u https://api.example.com/graphql -p deep -o results.json
 
 # Safe mode (skip DoS tests, your ops team will thank you)
-python graphql-hunter.py -u https://api.example.com/graphql --safe-mode
+graphql-hunter  -u https://api.example.com/graphql --safe-mode
 
 # Stealth mode (be sneaky, move slowly, don't wake the WAF)
-python graphql-hunter.py -u https://api.example.com/graphql -p stealth --delay 2
+graphql-hunter  -u https://api.example.com/graphql -p stealth --delay 2
 ```
 
 ## Usage Guide
@@ -89,16 +85,16 @@ python graphql-hunter.py -u https://api.example.com/graphql -p stealth --delay 2
 
 ```bash
 # Quick scan (fast food of security scans)
-python graphql-hunter.py -u https://api.example.com/graphql -p quick
+graphql-hunter  -u https://api.example.com/graphql -p quick
 
 # Standard scan (the Goldilocks option) - DEFAULT
-python graphql-hunter.py -u https://api.example.com/graphql -p standard
+graphql-hunter  -u https://api.example.com/graphql -p standard
 
 # Deep scan (hold my coffee, this'll take a minute)
-python graphql-hunter.py -u https://api.example.com/graphql -p deep
+graphql-hunter  -u https://api.example.com/graphql -p deep
 
 # Stealth scan (ninja mode activated 🥷)
-python graphql-hunter.py -u https://api.example.com/graphql -p stealth --delay 2
+graphql-hunter  -u https://api.example.com/graphql -p stealth --delay 2
 ```
 
 ### Authentication
@@ -107,30 +103,30 @@ python graphql-hunter.py -u https://api.example.com/graphql -p stealth --delay 2
 
 ```bash
 # Using Bearer token (the modern way)
-python graphql-hunter.py -u https://api.example.com/graphql -t YOUR_TOKEN
+graphql-hunter  -u https://api.example.com/graphql -t YOUR_TOKEN
 
 # Using custom headers (because you're special)
-python graphql-hunter.py -u https://api.example.com/graphql -H "Authorization: Bearer TOKEN"
-python graphql-hunter.py -u https://api.example.com/graphql -H "X-API-Key: KEY" -H "X-User-ID: 123"
+graphql-hunter  -u https://api.example.com/graphql -H "Authorization: Bearer TOKEN"
+graphql-hunter  -u https://api.example.com/graphql -H "X-API-Key: KEY" -H "X-User-ID: 123"
 ```
 
 ### Output Options
 
 ```bash
 # Save results to JSON (for posterity and blame assignment)
-python graphql-hunter.py -u https://api.example.com/graphql -o results.json
+graphql-hunter  -u https://api.example.com/graphql -o results.json
 
 # Save results to HTML (pretty reports for management)
-python graphql-hunter.py -u https://api.example.com/graphql --html report.html
+graphql-hunter  -u https://api.example.com/graphql --html report.html
 
 # Both JSON and HTML (cover all your bases)
-python graphql-hunter.py -u https://api.example.com/graphql -o results.json --html report.html
+graphql-hunter  -u https://api.example.com/graphql -o results.json --html report.html
 
 # Verbose mode (ALL the details, prepare for information overload)
-python graphql-hunter.py -u https://api.example.com/graphql -v
+graphql-hunter  -u https://api.example.com/graphql -v
 
 # Disable colors (for logs that'll outlive us all)
-python graphql-hunter.py -u https://api.example.com/graphql --no-color > scan.txt
+graphql-hunter  -u https://api.example.com/graphql --no-color > scan.txt
 ```
 
 ### Selective Scanning
@@ -139,10 +135,10 @@ python graphql-hunter.py -u https://api.example.com/graphql --no-color > scan.tx
 
 ```bash
 # Skip the scary scanners
-python graphql-hunter.py -u https://api.example.com/graphql --skip-dos --skip-batching
+graphql-hunter  -u https://api.example.com/graphql --skip-dos --skip-batching
 
 # Only run the scanners you can handle emotionally
-python graphql-hunter.py -u https://api.example.com/graphql \
+graphql-hunter  -u https://api.example.com/graphql \
   --skip-info-disclosure \
   --skip-auth \
   --skip-dos \
@@ -158,10 +154,10 @@ python graphql-hunter.py -u https://api.example.com/graphql \
 
 ```bash
 # HTTP proxy (route through Burp Suite)
-python graphql-hunter.py -u https://api.example.com/graphql --proxy http://127.0.0.1:8080
+graphql-hunter  -u https://api.example.com/graphql --proxy http://127.0.0.1:8080
 
 # Watch the requests in real-time (it's oddly satisfying)
-python graphql-hunter.py -u https://api.example.com/graphql --proxy http://127.0.0.1:8080 -v
+graphql-hunter  -u https://api.example.com/graphql --proxy http://127.0.0.1:8080 -v
 ```
 
 ## Examples & Test Cases
@@ -172,13 +168,13 @@ python graphql-hunter.py -u https://api.example.com/graphql --proxy http://127.0
 
 ```bash
 # Countries API (Recommended - won't get you fired)
-python graphql-hunter.py -u https://countries.trevorblades.com/graphql
+graphql-hunter  -u https://countries.trevorblades.com/graphql
 
 # SpaceX API (because space is cool)
-python graphql-hunter.py -u https://api.spacex.land/graphql/
+graphql-hunter  -u https://api.spacex.land/graphql/
 
 # GitHub GraphQL API (bring your token or go home)
-python graphql-hunter.py -u https://api.github.com/graphql -t YOUR_GITHUB_TOKEN
+graphql-hunter  -u https://api.github.com/graphql -t YOUR_GITHUB_TOKEN
 ```
 
 ### Vulnerable Test Application
@@ -195,7 +191,7 @@ docker build -t dvga .
 docker run -t -p 5013:5013 -e WEB_HOST=0.0.0.0 dvga
 
 # Unleash GraphQL Hunter on it (it never stood a chance)
-python graphql-hunter.py -u http://localhost:5013/graphql -p deep -o dvga-scan.json
+graphql-hunter  -u http://localhost:5013/graphql -p deep -o dvga-scan.json
 ```
 
 DVGA contains intentional vulnerabilities perfect for testing:
@@ -211,10 +207,10 @@ DVGA contains intentional vulnerabilities perfect for testing:
 **Scenario 1: Testing a New API**
 ```bash
 # Start gentle (like a first date)
-python graphql-hunter.py -u https://api.example.com/graphql -p quick
+graphql-hunter  -u https://api.example.com/graphql -p quick
 
 # If issues are found, go deeper (relationship getting serious)
-python graphql-hunter.py -u https://api.example.com/graphql -p deep -o results.json
+graphql-hunter  -u https://api.example.com/graphql -p deep -o results.json
 
 # Review the damage
 cat results.json | python -m json.tool
@@ -223,12 +219,12 @@ cat results.json | python -m json.tool
 **Scenario 2: Authenticated Testing**
 ```bash
 # Test with API key (you've got the VIP pass)
-python graphql-hunter.py -u https://api.example.com/graphql \
+graphql-hunter  -u https://api.example.com/graphql \
   -H "X-API-Key: your-api-key-here" \
   -o authenticated-results.json
 
 # Test with JWT token (fancy!)
-python graphql-hunter.py -u https://api.example.com/graphql \
+graphql-hunter  -u https://api.example.com/graphql \
   -t eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... \
   -v
 ```
@@ -236,7 +232,7 @@ python graphql-hunter.py -u https://api.example.com/graphql \
 **Scenario 3: Focus on Specific Vulnerabilities**
 ```bash
 # Only test for injection (because that's bad enough)
-python graphql-hunter.py -u https://api.example.com/graphql \
+graphql-hunter  -u https://api.example.com/graphql \
   --skip-info-disclosure \
   --skip-auth \
   --skip-dos \
@@ -569,30 +565,46 @@ Overall Risk: CRITICAL - Immediate action required! (Translation: panic responsi
 
 ```
 graphql-hunter/
-├── graphql-hunter.py           # The main show
-├── requirements.txt            # Dependencies (not many!)
-├── README.md                   # You are here
-├── quickstart.bat              # For Windows folks
-├── test_tool.py                # Self-test script
-├── config/
-│   └── payloads.yaml          # Attack payloads (the spicy stuff)
-├── lib/
-│   ├── graphql_client.py      # Talks to GraphQL
-│   ├── reporter.py            # Makes things pretty
-│   ├── utils.py               # Random useful stuff
-│   └── introspection.py       # Schema parser
-└── scanners/
-    ├── introspection_scanner.py       # Finds exposed schemas
-    ├── info_disclosure_scanner.py     # Finds leaky errors
-    ├── auth_bypass_scanner.py         # Tests auth (or lack thereof)
-    ├── injection_scanner.py           # Injection detection
-    ├── dos_scanner.py                 # DoS tests (carefully!)
-    ├── batching_scanner.py            # Batch attack tests
-    ├── aliasing_scanner.py            # Aliasing abuse detection
-    ├── circular_query_scanner.py      # Finds loops
-    ├── mutation_fuzzer.py             # Mutation security
-    ├── xss_scanner.py                 # XSS detection
-    └── jwt_scanner.py                 # JWT security tests
+├── .gitignore
+├── .python-version
+├── README.md
+├── add_urls.py
+├── config
+│   └── payloads.yaml                          # Attack payloads (the spicy stuff)
+├── examples
+│   ├── dvga-report.html
+│   └── dvga-scan.json
+├── graphql-hunter-banner.png
+├── pyproject.toml
+├── requirements.txt                           # Dependencies (not many!)
+├── src
+│   └── graphql_hunter
+│       ├── __init__.py
+│       ├── cli.py                             # The main show
+│       ├── lib
+│       │   ├── __init__.py
+│       │   ├── graphql_client.py              # Talks to GraphQL
+│       │   ├── html_reporter.py               
+│       │   ├── introspection.py               # Schema parser
+│       │   ├── reporter.py                    # Makes things pretty
+│       │   └── utils.py                       # Random useful stuff
+│       └── scanners
+│           ├── __init__.py
+│           ├── introspection_scanner.py       # Finds exposed schemas
+│           ├── info_disclosure_scanner.py     # Finds leaky errors
+│           ├── auth_bypass_scanner.py         # Tests auth (or lack thereof)
+│           ├── injection_scanner.py           # Injection detection
+│           ├── dos_scanner.py                 # DoS tests (carefully!)
+│           ├── batching_scanner.py            # Batch attack tests
+│           ├── aliasing_scanner.py            # Aliasing abuse detection
+│           ├── circular_query_scanner.py      # Finds loops
+│           ├── mutation_fuzzer.py             # Mutation security
+│           ├── xss_scanner.py                 # XSS detection
+│           └── jwt_scanner.py                 # JWT security tests
+├── test_tool.py
+├── update_scanners.py
+└── uv.lock
+
 ```
 
 ## Contributing
@@ -630,6 +642,9 @@ This tool is provided for educational and authorized testing purposes only. Don'
 - Always follow responsible disclosure practices (be a good human)
 
 ## Version
+
+GraphQL Hunter v1.1 - December 2025
+*Built with just coffee ☕*
 
 GraphQL Hunter v1.0 - November 2025
 
