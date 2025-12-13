@@ -1,6 +1,6 @@
 [project]
 name = "graphql-hunter"
-version = "0.1.0"
+version = "1.1.0"
 description = "Let's make quick work of GraphQL instances ;)"
 readme = "README.md"
 authors = [
