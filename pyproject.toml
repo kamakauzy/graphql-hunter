@@ -23,6 +23,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "ruff>=0.14.9",
+    "pytest>=8.0",
 ]
 
 [tool.ruff]
@@ -31,3 +32,7 @@ line-length = 100
 [tool.ruff.format]
 indent-style = "space"
 docstring-code-format = true
+
+[tool.pytest.ini_options]
+pythonpath ='src'
+addopts = '-ra --maxfail=1'
