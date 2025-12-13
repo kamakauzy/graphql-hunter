@@ -87,7 +87,9 @@ Examples:
 
     # Scanner selection
     parser.add_argument(
-        "--skip-introspection", action="store_true", help="Skip introspection scanner"
+        "--skip-introspection",
+        action="store_true",
+        help="Skip introspection scanner",
     )
     parser.add_argument(
         "--skip-info-disclosure",
@@ -99,26 +101,30 @@ Examples:
         action="store_true",
         help="Skip authentication/authorization tests",
     )
-    parser.add_argument(
-        "--skip-injection", action="store_true", help="Skip injection tests"
-    )
+    parser.add_argument("--skip-injection", action="store_true", help="Skip injection tests")
     parser.add_argument("--skip-dos", action="store_true", help="Skip DoS vector tests")
     parser.add_argument(
-        "--skip-batching", action="store_true", help="Skip batching attack tests"
+        "--skip-batching",
+        action="store_true",
+        help="Skip batching attack tests",
     )
     parser.add_argument(
-        "--skip-aliasing", action="store_true", help="Skip aliasing abuse tests"
+        "--skip-aliasing",
+        action="store_true",
+        help="Skip aliasing abuse tests",
     )
     parser.add_argument(
-        "--skip-circular", action="store_true", help="Skip circular query tests"
+        "--skip-circular",
+        action="store_true",
+        help="Skip circular query tests",
     )
     parser.add_argument(
-        "--skip-mutation-fuzzing", action="store_true", help="Skip mutation fuzzing"
+        "--skip-mutation-fuzzing",
+        action="store_true",
+        help="Skip mutation fuzzing",
     )
     parser.add_argument("--skip-xss", action="store_true", help="Skip XSS tests")
-    parser.add_argument(
-        "--skip-jwt", action="store_true", help="Skip JWT security tests"
-    )
+    parser.add_argument("--skip-jwt", action="store_true", help="Skip JWT security tests")
 
     # Output options
     parser.add_argument("-o", "--output", help="Output JSON file path")
@@ -129,9 +135,7 @@ Examples:
         action="store_true",
         help="Verbose output (show requests/responses)",
     )
-    parser.add_argument(
-        "--no-color", action="store_true", help="Disable colored output"
-    )
+    parser.add_argument("--no-color", action="store_true", help="Disable colored output")
 
     # Proxy settings
     parser.add_argument("--proxy", help="Proxy URL (e.g., http://127.0.0.1:8080)")
@@ -198,7 +202,10 @@ def main():
 
     if not args.skip_introspection:
         scanners.append(
-            ("Introspection", IntrospectionScanner(client, reporter, profile_config))
+            (
+                "Introspection",
+                IntrospectionScanner(client, reporter, profile_config),
+            )
         )
 
     if not args.skip_info_disclosure:
@@ -218,36 +225,49 @@ def main():
         )
 
     if not args.skip_injection:
-        scanners.append(
-            ("Injection", InjectionScanner(client, reporter, profile_config))
-        )
+        scanners.append(("Injection", InjectionScanner(client, reporter, profile_config)))
 
     if not args.skip_dos and profile_config.get("enable_dos", True):
         scanners.append(("DoS Vectors", DoSScanner(client, reporter, profile_config)))
 
     if not args.skip_batching:
         scanners.append(
-            ("Batching Attacks", BatchingScanner(client, reporter, profile_config))
+            (
+                "Batching Attacks",
+                BatchingScanner(client, reporter, profile_config),
+            )
         )
 
     if not args.skip_aliasing:
         scanners.append(
-            ("Aliasing Abuse", AliasingScanner(client, reporter, profile_config))
+            (
+                "Aliasing Abuse",
+                AliasingScanner(client, reporter, profile_config),
+            )
         )
 
     if not args.skip_circular:
         scanners.append(
-            ("Circular Queries", CircularQueryScanner(client, reporter, profile_config))
+            (
+                "Circular Queries",
+                CircularQueryScanner(client, reporter, profile_config),
+            )
         )
 
     if not args.skip_mutation_fuzzing:
         scanners.append(
-            ("Mutation Fuzzing", MutationFuzzer(client, reporter, profile_config))
+            (
+                "Mutation Fuzzing",
+                MutationFuzzer(client, reporter, profile_config),
+            )
         )
 
     if not args.skip_xss:
         scanners.append(
-            ("Cross-Site Scripting (XSS)", XSSScanner(client, reporter, profile_config))
+            (
+                "Cross-Site Scripting (XSS)",
+                XSSScanner(client, reporter, profile_config),
+            )
         )
 
     if not args.skip_jwt:

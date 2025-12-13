@@ -119,9 +119,7 @@ class GraphQLClient:
                 result = response.json()
             except json.JSONDecodeError:
                 result = {
-                    "errors": [
-                        {"message": f"Non-JSON response: {response.text[:200]}"}
-                    ],
+                    "errors": [{"message": f"Non-JSON response: {response.text[:200]}"}],
                     "status_code": response.status_code,
                     "raw_response": response.text,
                 }

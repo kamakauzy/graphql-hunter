@@ -36,9 +36,7 @@ class CircularQueryScanner:
         findings = []
 
         if not self.client.schema:
-            self.reporter.print_info(
-                "Schema not available, skipping circular query tests"
-            )
+            self.reporter.print_info("Schema not available, skipping circular query tests")
             return findings
 
         # Find circular references in schema
@@ -46,9 +44,7 @@ class CircularQueryScanner:
         circular_refs = self._find_circular_references()
 
         if circular_refs:
-            self.reporter.print_info(
-                f"Found {len(circular_refs)} potential circular references"
-            )
+            self.reporter.print_info(f"Found {len(circular_refs)} potential circular references")
             findings.extend(self._test_circular_exploitation(circular_refs))
         else:
             self.reporter.print_info("No obvious circular references found")

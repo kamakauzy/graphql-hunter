@@ -61,9 +61,7 @@ class BatchingScanner:
 
         # Check if all queries were executed
         if len(results) >= len(batch):
-            successful = sum(
-                1 for r in results if r.get("data") and not r.get("errors")
-            )
+            successful = sum(1 for r in results if r.get("data") and not r.get("errors"))
 
             if successful > 1:
                 findings.append(

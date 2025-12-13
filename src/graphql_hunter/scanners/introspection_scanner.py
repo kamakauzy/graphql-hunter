@@ -51,9 +51,7 @@ class IntrospectionScanner:
                     impact="Attackers can map the entire API surface area, discover hidden or undocumented endpoints, and identify potential attack vectors. This significantly aids reconnaissance and can expose sensitive functionality.",
                     remediation="Disable introspection in production environments. In most GraphQL implementations, this can be done through configuration settings. Keep introspection enabled only in development/testing environments.",
                     cwe="CWE-200: Exposure of Sensitive Information to an Unauthorized Actor",
-                    evidence={
-                        "introspection_response": "Full schema retrieved successfully"
-                    },
+                    evidence={"introspection_response": "Full schema retrieved successfully"},
                     poc="{ __schema { types { name } } }",
                     url=self.client.url,
                 )
@@ -83,9 +81,7 @@ class IntrospectionScanner:
 
                 # Sample some for the finding
                 sample_fields = sensitive_fields[:5]
-                field_list = ", ".join(
-                    [f"{f['type']}.{f['field']}" for f in sample_fields]
-                )
+                field_list = ", ".join([f"{f['type']}.{f['field']}" for f in sample_fields])
 
                 findings.append(
                     create_finding(

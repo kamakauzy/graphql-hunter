@@ -50,9 +50,7 @@ class JWTScanner:
             auth_value = self.client.headers["Authorization"]
 
             # Check for JWT pattern (three base64 segments separated by dots)
-            jwt_pattern = (
-                r"^Bearer\s+([A-Za-z0-9-_]+)\.([A-Za-z0-9-_]+)\.([A-Za-z0-9-_]+)$"
-            )
+            jwt_pattern = r"^Bearer\s+([A-Za-z0-9-_]+)\.([A-Za-z0-9-_]+)\.([A-Za-z0-9-_]+)$"
 
             if re.match(jwt_pattern, auth_value):
                 findings.append(
@@ -84,9 +82,7 @@ class JWTScanner:
         # Base64 encode {"alg":"none","typ":"JWT"}
         forged_header = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"
         # Base64 encode {"sub":"1234567890","name":"Admin","admin":true}
-        forged_payload = (
-            "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFkbWluIiwiYWRtaW4iOnRydWV9"
-        )
+        forged_payload = "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFkbWluIiwiYWRtaW4iOnRydWV9"
         # No signature for 'none' algorithm
         forged_jwt = f"{forged_header}.{forged_payload}."
 
@@ -115,7 +111,10 @@ class JWTScanner:
                         impact="Attackers can forge any JWT token and impersonate any user, including administrators, leading to complete authentication bypass.",
                         remediation="IMMEDIATELY disable acceptance of JWT tokens with 'none' algorithm. Implement strict algorithm validation and only accept secure algorithms like RS256 or ES256.",
                         cwe="CWE-347: Improper Verification of Cryptographic Signature",
-                        evidence={"forged_token_accepted": True, "algorithm": "none"},
+                        evidence={
+                            "forged_token_accepted": True,
+                            "algorithm": "none",
+                        },
                         poc=f"Authorization: Bearer {forged_jwt}",
                     )
                 )

@@ -80,7 +80,10 @@ class InfoDisclosureScanner:
                                 impact="Stack traces can reveal sensitive information about the application's technology stack, file structure, library versions, and internal logic. This information aids attackers in identifying potential vulnerabilities.",
                                 remediation="Configure the GraphQL server to suppress stack traces in production. Return generic error messages to clients while logging detailed errors server-side.",
                                 cwe="CWE-209: Generation of Error Message Containing Sensitive Information",
-                                evidence={"query": query, "error": error_msg[:500]},
+                                evidence={
+                                    "query": query,
+                                    "error": error_msg[:500],
+                                },
                                 poc=f"Query: {query}\nReturns stack trace with internal paths",
                             )
                         )
@@ -101,10 +104,7 @@ class InfoDisclosureScanner:
                 error_msg = error.get("message", "")
 
                 # Check if error contains suggestions like "Did you mean..."
-                if (
-                    "did you mean" in error_msg.lower()
-                    or "suggestion" in error_msg.lower()
-                ):
+                if "did you mean" in error_msg.lower() or "suggestion" in error_msg.lower():
                     findings.append(
                         create_finding(
                             title="Field Suggestion Feature Enabled",
@@ -113,7 +113,10 @@ class InfoDisclosureScanner:
                             impact="Field suggestions help attackers enumerate valid fields through typos and similar queries, making reconnaissance easier.",
                             remediation="Disable field suggestions in production environments. This is often controlled by GraphQL server configuration.",
                             cwe="CWE-200: Exposure of Sensitive Information to an Unauthorized Actor",
-                            evidence={"query": test_query, "error_message": error_msg},
+                            evidence={
+                                "query": test_query,
+                                "error_message": error_msg,
+                            },
                             url=self.client.url,
                         )
                     )
@@ -195,9 +198,7 @@ class InfoDisclosureScanner:
                 ]
 
                 verbose_count = sum(
-                    1
-                    for indicator in verbose_indicators
-                    if indicator.lower() in error_msg.lower()
+                    1 for indicator in verbose_indicators if indicator.lower() in error_msg.lower()
                 )
 
                 if verbose_count >= 2:

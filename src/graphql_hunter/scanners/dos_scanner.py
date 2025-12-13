@@ -150,7 +150,10 @@ class DoSScanner:
                     impact="Attackers can use field aliasing to multiply the work the server must do, causing resource exhaustion and potential DoS.",
                     remediation="Implement query complexity analysis that counts aliased fields. Limit the total number of fields that can be queried.",
                     cwe="CWE-400: Uncontrolled Resource Consumption",
-                    evidence={"field_count": field_count, "elapsed_time": elapsed},
+                    evidence={
+                        "field_count": field_count,
+                        "elapsed_time": elapsed,
+                    },
                     url=self.client.url,
                 )
             )
@@ -187,7 +190,10 @@ class DoSScanner:
                             description=f"The type '{type_name}' has a field '{field.get('name')}' that returns the same type, creating a potential circular reference.",
                             impact="Circular references can be exploited to create deeply nested queries that consume excessive resources if not properly limited.",
                             remediation="Ensure query depth limiting is in place to prevent exploitation of circular references. This is a common pattern but must be protected.",
-                            evidence={"type": type_name, "field": field.get("name")},
+                            evidence={
+                                "type": type_name,
+                                "field": field.get("name"),
+                            },
                             url=self.client.url,
                         )
                     )

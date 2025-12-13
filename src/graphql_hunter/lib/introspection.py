@@ -113,9 +113,7 @@ class SchemaParser:
                         {
                             "type": type_def.get("name"),
                             "field": field.get("name"),
-                            "reason": field.get(
-                                "deprecationReason", "No reason provided"
-                            ),
+                            "reason": field.get("deprecationReason", "No reason provided"),
                         }
                     )
 
@@ -167,11 +165,7 @@ class SchemaParser:
     def analyze_complexity(self) -> Dict:
         """Analyze schema complexity"""
         total_types = len(
-            [
-                t
-                for t in self.schema.get("types", [])
-                if not t.get("name", "").startswith("__")
-            ]
+            [t for t in self.schema.get("types", []) if not t.get("name", "").startswith("__")]
         )
         total_queries = len(self.get_queries())
         total_mutations = len(self.get_mutations())

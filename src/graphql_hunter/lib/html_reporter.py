@@ -36,7 +36,8 @@ class HTMLReporter:
 
         banner_data = ""
         banner_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "graphql-hunter-banner.png"
+            os.path.dirname(os.path.dirname(__file__)),
+            "graphql-hunter-banner.png",
         )
         try:
             with open(banner_path, "rb") as f:
@@ -46,13 +47,9 @@ class HTMLReporter:
 
         # Get severity counts - count from actual findings
         severity_counts = {
-            "CRITICAL": sum(
-                1 for f in findings if f.get("severity", "").upper() == "CRITICAL"
-            ),
+            "CRITICAL": sum(1 for f in findings if f.get("severity", "").upper() == "CRITICAL"),
             "HIGH": sum(1 for f in findings if f.get("severity", "").upper() == "HIGH"),
-            "MEDIUM": sum(
-                1 for f in findings if f.get("severity", "").upper() == "MEDIUM"
-            ),
+            "MEDIUM": sum(1 for f in findings if f.get("severity", "").upper() == "MEDIUM"),
             "LOW": sum(1 for f in findings if f.get("severity", "").upper() == "LOW"),
             "INFO": sum(1 for f in findings if f.get("severity", "").upper() == "INFO"),
         }
@@ -599,7 +596,13 @@ class HTMLReporter:
             return ""
 
         # Sort findings by severity (CRITICAL -> HIGH -> MEDIUM -> LOW -> INFO)
-        severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
+        severity_order = {
+            "CRITICAL": 0,
+            "HIGH": 1,
+            "MEDIUM": 2,
+            "LOW": 3,
+            "INFO": 4,
+        }
         sorted_findings = sorted(
             findings,
             key=lambda x: severity_order.get(x.get("severity", "INFO").upper(), 5),
@@ -612,9 +615,7 @@ class HTMLReporter:
             title = finding.get("title", "Unknown Issue")
             description = finding.get("description", "No description provided")
             impact = finding.get("impact", "Impact not specified")
-            remediation = finding.get(
-                "remediation", "No remediation guidance available"
-            )
+            remediation = finding.get("remediation", "No remediation guidance available")
             cwe = finding.get("cwe", "")
             evidence = finding.get("evidence", {})
             poc = finding.get("poc", "")

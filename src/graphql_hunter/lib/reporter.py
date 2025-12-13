@@ -106,9 +106,7 @@ class Reporter:
 
         # Print title with severity
         severity_label = f"[{severity}]"
-        print(
-            f"\n{self._colorize(severity_label, severity)} {self._colorize(title, severity)}"
-        )
+        print(f"\n{self._colorize(severity_label, severity)} {self._colorize(title, severity)}")
 
         # Print description
         if description:
@@ -179,23 +177,18 @@ class Reporter:
         if counts["CRITICAL"] > 0:
             print(
                 self._colorize(
-                    "Overall Risk: CRITICAL - Immediate action required!", "CRITICAL"
+                    "Overall Risk: CRITICAL - Immediate action required!",
+                    "CRITICAL",
                 )
             )
         elif counts["HIGH"] > 0:
             print(self._colorize("Overall Risk: HIGH - Action required soon", "HIGH"))
         elif counts["MEDIUM"] > 0:
-            print(
-                self._colorize("Overall Risk: MEDIUM - Should be addressed", "MEDIUM")
-            )
+            print(self._colorize("Overall Risk: MEDIUM - Should be addressed", "MEDIUM"))
         elif counts["LOW"] > 0:
             print(self._colorize("Overall Risk: LOW - Minor issues found", "LOW"))
         else:
-            print(
-                self._colorize(
-                    "Overall Risk: MINIMAL - No significant issues", "SUCCESS"
-                )
-            )
+            print(self._colorize("Overall Risk: MINIMAL - No significant issues", "SUCCESS"))
 
         print()
 

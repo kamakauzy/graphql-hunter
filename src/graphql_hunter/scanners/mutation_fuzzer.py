@@ -102,9 +102,7 @@ class MutationFuzzer:
 
             # Create POC with first dangerous mutation
             example_mutation = (
-                dangerous_mutations[0]["name"]
-                if dangerous_mutations
-                else "deleteSomething"
+                dangerous_mutations[0]["name"] if dangerous_mutations else "deleteSomething"
             )
             poc_query = f"mutation {{ {example_mutation} {{ __typename }} }}"
 
@@ -200,9 +198,7 @@ class MutationFuzzer:
             sample_mutations = ", ".join([m["mutation"] for m in idor_candidates[:5]])
 
             # Create POC for testing IDOR
-            example_mutation = (
-                idor_candidates[0]["mutation"] if idor_candidates else "editItem"
-            )
+            example_mutation = idor_candidates[0]["mutation"] if idor_candidates else "editItem"
             example_arg = idor_candidates[0]["argument"] if idor_candidates else "id"
             poc_query = f"mutation {{ {example_mutation}({example_arg}: 999) {{ __typename }} }}"
 

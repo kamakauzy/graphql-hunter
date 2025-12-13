@@ -242,9 +242,7 @@ def generate_curl_command(url: str, query: str) -> str:
         Formatted curl command
     """
     # Escape quotes and newlines in query
-    escaped_query = (
-        query.replace('"', '\\"').replace("\n", " ").replace("\r", "").strip()
-    )
+    escaped_query = query.replace('"', '\\"').replace("\n", " ").replace("\r", "").strip()
 
     # Truncate very long queries for readability
     if len(escaped_query) > 500:

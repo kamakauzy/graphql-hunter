@@ -69,9 +69,7 @@ class InjectionScanner:
         findings = []
 
         if not self.client.schema:
-            self.reporter.print_warning(
-                "Introspection not available, limited injection testing"
-            )
+            self.reporter.print_warning("Introspection not available, limited injection testing")
             # Still try some basic tests
             findings.extend(self._test_basic_injection())
             return findings
@@ -109,7 +107,10 @@ class InjectionScanner:
                         impact="SQL injection can allow attackers to read, modify, or delete database contents, bypass authentication, and potentially execute commands on the database server.",
                         remediation="Use parameterized queries or prepared statements. Validate and sanitize all user input. Implement proper input encoding.",
                         cwe="CWE-89: SQL Injection",
-                        evidence={"payload": payload, "error": error_text[:500]},
+                        evidence={
+                            "payload": payload,
+                            "error": error_text[:500],
+                        },
                         url=self.client.url,
                     )
                 )
@@ -147,7 +148,9 @@ class InjectionScanner:
                     continue
 
                 for payload in self.sql_payloads[:3]:  # Test first 3 payloads
-                    query_str = f'query {{ {query_name}({arg_name}: "{payload}") {{ __typename }} }}'
+                    query_str = (
+                        f'query {{ {query_name}({arg_name}: "{payload}") {{ __typename }} }}'
+                    )
                     result = self.client.query(query_str)
 
                     if result.get("errors"):
@@ -202,7 +205,9 @@ class InjectionScanner:
 
                 for payload in self.nosql_payloads[:2]:
                     # Try as string (JSON encoded)
-                    query_str = f'query {{ {query_name}({arg_name}: "{payload}") {{ __typename }} }}'
+                    query_str = (
+                        f'query {{ {query_name}({arg_name}: "{payload}") {{ __typename }} }}'
+                    )
                     result = self.client.query(query_str)
 
                     if result.get("errors"):
@@ -260,7 +265,9 @@ class InjectionScanner:
                     continue
 
                 for payload in self.command_payloads[:2]:
-                    query_str = f'query {{ {query_name}({arg_name}: "{payload}") {{ __typename }} }}'
+                    query_str = (
+                        f'query {{ {query_name}({arg_name}: "{payload}") {{ __typename }} }}'
+                    )
                     result = self.client.query(query_str)
 
                     # Look for command execution indicators in errors

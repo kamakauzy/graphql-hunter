@@ -79,7 +79,10 @@ class AliasingScanner:
                             impact="Field aliasing can be exploited to multiply the cost of a single query by requesting the same expensive field multiple times under different aliases. This can lead to severe resource exhaustion and DoS.",
                             remediation="Implement query cost analysis that counts aliased fields. Each alias should contribute to the query cost. Consider limiting the total number of fields (including aliases) in a single query.",
                             cwe="CWE-400: Uncontrolled Resource Consumption",
-                            evidence={"alias_count": count, "response_time": elapsed},
+                            evidence={
+                                "alias_count": count,
+                                "response_time": elapsed,
+                            },
                             poc=f"Query with {count} aliases: " + query[:200] + "...",
                             url=self.client.url,
                         )
