@@ -26,7 +26,6 @@ dev = [
 ]
 
 [tool.ruff]
-# Set the maximum line length to 79.
 line-length = 100
 
 [tool.ruff.format]
