@@ -41,6 +41,9 @@ echo.
 echo Usage:
 echo   python graphql-hunter.py -u https://api.example.com/graphql
 echo.
+echo Auth Wizard (interactive):
+echo   python graphql-hunter.py --auth-wizard
+echo.
 echo For help:
 echo   python graphql-hunter.py --help
 echo.

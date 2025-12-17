@@ -52,6 +52,9 @@ def test_public_endpoint():
     print("\n    To test against a real endpoint, run:")
     print("    python graphql-hunter.py -u https://countries.trevorblades.com/graphql")
     print()
+    print("    Or use the interactive auth wizard:")
+    print("    python graphql-hunter.py --auth-wizard")
+    print()
 
 def main():
     print("=" * 60)

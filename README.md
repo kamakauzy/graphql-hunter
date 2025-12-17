@@ -622,9 +622,11 @@ graphql-hunter/
 ├── quickstart.bat              # For Windows folks
 ├── test_tool.py                # Self-test script
 ├── config/
-│   └── payloads.yaml          # Attack payloads (the spicy stuff)
+│   ├── payloads.yaml          # Attack payloads (the spicy stuff)
+│   └── auth.yaml              # Auth workflow profiles (safe template)
 ├── lib/
 │   ├── graphql_client.py      # Talks to GraphQL
+│   ├── auth/                  # Auth workflow engine (OAuth, cookies, CSRF, wizard)
 │   ├── reporter.py            # Makes things pretty
 │   ├── utils.py               # Random useful stuff
 │   └── introspection.py       # Schema parser
