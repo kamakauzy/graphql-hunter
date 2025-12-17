@@ -6,7 +6,19 @@ GraphQL Client - Handles all GraphQL requests and introspection
 import requests
 import json
 import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Mapping
+
+try:
+    # Optional dependency (auth engine). GraphQLClient works without it.
+    from auth.manager import AuthManager  # noqa: F401
+except Exception:  # pragma: no cover
+    AuthManager = Any  # type: ignore
+
+try:
+    from auth.redact import redact_obj as _redact_obj, redact_text as _redact_text  # noqa: F401
+except Exception:  # pragma: no cover
+    _redact_obj = None  # type: ignore
+    _redact_text = None  # type: ignore
 
 
 class GraphQLClient:
@@ -14,7 +26,10 @@ class GraphQLClient:
     
     def __init__(self, url: str, headers: Optional[Dict] = None, 
                  proxy: Optional[str] = None, delay: float = 0, 
-                 verbose: bool = False, timeout: int = 30):
+                 verbose: bool = False, timeout: int = 30,
+                 verify: bool = True,
+                 auth_manager: Optional[Any] = None,
+                 test_connection: bool = True):
         """
         Initialize GraphQL client
         
@@ -31,8 +46,13 @@ class GraphQLClient:
         self.delay = delay
         self.verbose = verbose
         self.timeout = timeout
+        self.verify = verify
+        self.auth_manager = auth_manager
         self.schema = None
         self.introspection_enabled = None
+
+        # Maintain cookies for session-based auth flows
+        self.session = requests.Session()
         
         # Set default headers
         if 'Content-Type' not in self.headers:
@@ -47,26 +67,20 @@ class GraphQLClient:
             }
         
         # Test connection
-        self._test_connection()
+        if test_connection:
+            self.test_connection()
     
-    def _test_connection(self):
+    def test_connection(self):
         """Test connection to GraphQL endpoint"""
-        try:
-            response = requests.post(
-                self.url,
-                headers=self.headers,
-                json={'query': '{__typename}'},
-                proxies=self.proxies,
-                timeout=self.timeout,
-                verify=True
-            )
-            if response.status_code not in [200, 400]:
-                raise Exception(f"Unexpected status code: {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Connection failed: {e}")
+        result = self.query('{__typename}')
+        status = int(result.get('_status_code', 0) or 0)
+        if status not in [200, 400]:
+            raise Exception(f"Unexpected status code: {status}")
     
     def query(self, query: str, variables: Optional[Dict] = None, 
-              operation_name: Optional[str] = None) -> Dict:
+              operation_name: Optional[str] = None,
+              extra_headers: Optional[Mapping[str, str]] = None,
+              bypass_auth: bool = False) -> Dict:
         """
         Execute a GraphQL query
         
@@ -90,22 +104,47 @@ class GraphQLClient:
         
         if self.verbose:
             print(f"\n[DEBUG] Request to {self.url}")
-            print(f"[DEBUG] Headers: {json.dumps(self.headers, indent=2)}")
-            print(f"[DEBUG] Payload: {json.dumps(payload, indent=2)}")
+            debug_headers = dict(self.headers)
+            if (not bypass_auth) and self.auth_manager and hasattr(self.auth_manager, "get_request_headers"):
+                try:
+                    debug_headers.update(self.auth_manager.get_request_headers())
+                except Exception:
+                    pass
+            if extra_headers:
+                debug_headers.update({k: str(v) for k, v in extra_headers.items()})
+            if self.auth_manager and hasattr(self.auth_manager, "redact_headers"):
+                debug_headers = self.auth_manager.redact_headers(debug_headers)
+            print(f"[DEBUG] Headers: {json.dumps(debug_headers, indent=2)}")
+            payload_for_debug = payload
+            if _redact_obj:
+                payload_for_debug = _redact_obj(payload_for_debug)
+            print(f"[DEBUG] Payload: {json.dumps(payload_for_debug, indent=2)}")
         
         try:
-            response = requests.post(
+            if (not bypass_auth) and self.auth_manager and hasattr(self.auth_manager, "ensure_prepared"):
+                self.auth_manager.ensure_prepared(self)
+
+            req_headers = dict(self.headers)
+            if (not bypass_auth) and self.auth_manager and hasattr(self.auth_manager, "get_request_headers"):
+                req_headers.update(self.auth_manager.get_request_headers())
+            if extra_headers:
+                req_headers.update({k: str(v) for k, v in extra_headers.items()})
+
+            response = self.session.post(
                 self.url,
-                headers=self.headers,
+                headers=req_headers,
                 json=payload,
                 proxies=self.proxies,
                 timeout=self.timeout,
-                verify=True
+                verify=self.verify
             )
             
             if self.verbose:
                 print(f"[DEBUG] Response Status: {response.status_code}")
-                print(f"[DEBUG] Response Body: {response.text[:1000]}")
+                body = response.text[:1000]
+                if _redact_text:
+                    body = _redact_text(body)
+                print(f"[DEBUG] Response Body: {body}")
             
             # Try to parse JSON
             try:
@@ -120,7 +159,41 @@ class GraphQLClient:
             # Add metadata
             result['_status_code'] = response.status_code
             result['_headers'] = dict(response.headers)
-            
+
+            # Refresh + retry once on auth failures
+            if (not bypass_auth) and self.auth_manager and hasattr(self.auth_manager, "maybe_refresh_and_retry"):
+                try:
+                    should_retry = self.auth_manager.maybe_refresh_and_retry(self, response.status_code, result)
+                except Exception:
+                    should_retry = False
+
+                if should_retry:
+                    # Rebuild headers (fresh token/cookies/CSRF)
+                    req_headers = dict(self.headers)
+                    if hasattr(self.auth_manager, "get_request_headers"):
+                        req_headers.update(self.auth_manager.get_request_headers())
+                    if extra_headers:
+                        req_headers.update({k: str(v) for k, v in extra_headers.items()})
+
+                    response = self.session.post(
+                        self.url,
+                        headers=req_headers,
+                        json=payload,
+                        proxies=self.proxies,
+                        timeout=self.timeout,
+                        verify=self.verify
+                    )
+                    try:
+                        result = response.json()
+                    except json.JSONDecodeError:
+                        result = {
+                            'errors': [{'message': f'Non-JSON response: {response.text[:200]}'}],
+                            'status_code': response.status_code,
+                            'raw_response': response.text
+                        }
+                    result['_status_code'] = response.status_code
+                    result['_headers'] = dict(response.headers)
+
             return result
             
         except requests.exceptions.Timeout:
@@ -333,13 +406,20 @@ class GraphQLClient:
             print(f"[DEBUG] Number of queries: {len(queries)}")
         
         try:
-            response = requests.post(
+            if self.auth_manager and hasattr(self.auth_manager, "ensure_prepared"):
+                self.auth_manager.ensure_prepared(self)
+
+            req_headers = dict(self.headers)
+            if self.auth_manager and hasattr(self.auth_manager, "get_request_headers"):
+                req_headers.update(self.auth_manager.get_request_headers())
+
+            response = self.session.post(
                 self.url,
-                headers=self.headers,
+                headers=req_headers,
                 json=queries,
                 proxies=self.proxies,
                 timeout=self.timeout,
-                verify=True
+                verify=self.verify
             )
             
             if self.verbose:

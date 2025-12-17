@@ -28,6 +28,8 @@ from mutation_fuzzer import MutationFuzzer
 from xss_scanner import XSSScanner
 from jwt_scanner import JWTScanner
 
+from auth.manager import AuthManager
+from auth.wizard import run_auth_wizard
 
 def parse_args():
     """Parse command line arguments"""
@@ -53,8 +55,9 @@ Examples:
         """
     )
     
-    # Required arguments
-    parser.add_argument('-u', '--url', required=True, help='GraphQL endpoint URL')
+    # Target
+    # Note: enforced in main() so --auth-wizard can run without -u.
+    parser.add_argument('-u', '--url', required=False, help='GraphQL endpoint URL')
     
     # Authentication & Headers
     parser.add_argument('-H', '--header', action='append', dest='headers',
@@ -103,6 +106,20 @@ Examples:
     
     # Proxy settings
     parser.add_argument('--proxy', help='Proxy URL (e.g., http://127.0.0.1:8080)')
+
+    # Auth workflow engine
+    parser.add_argument('--auth-config', default=str(Path(__file__).parent / "config" / "auth.yaml"),
+                        help='Auth config YAML path (default: config/auth.yaml)')
+    parser.add_argument('--auth-profile', help='Auth profile name from auth config')
+    parser.add_argument('--auth-var', action='append', dest='auth_vars',
+                        help='Auth variable override KEY=VALUE (can be used multiple times)')
+    parser.add_argument('--auth-detect', action='store_true', dest='auth_detect',
+                        help='Enable best-effort auth/CSRF diagnostics (default)')
+    parser.add_argument('--no-auth-detect', action='store_false', dest='auth_detect',
+                        help='Disable best-effort auth/CSRF diagnostics')
+    parser.set_defaults(auth_detect=True)
+    parser.add_argument('--auth-wizard', action='store_true',
+                        help='Interactive auth wizard (prints a ready-to-run command without exposing secrets)')
     
     return parser.parse_args()
 
@@ -114,6 +131,16 @@ def main():
     # Initialize reporter
     reporter = Reporter(use_colors=not args.no_color, verbose=args.verbose)
     reporter.print_banner()
+
+    # Wizard mode: run before requiring URL
+    if getattr(args, "auth_wizard", False):
+        return run_auth_wizard(args, reporter=reporter)
+
+    if not args.url:
+        reporter.print_error("Missing required argument: -u/--url")
+        reporter.print_info("Run: python graphql-hunter.py --help")
+        reporter.print_info("Or use: python graphql-hunter.py --auth-wizard")
+        return 1
     
     # Parse custom headers
     custom_headers = {}
@@ -122,10 +149,10 @@ def main():
             if ':' in header:
                 key, value = header.split(':', 1)
                 custom_headers[key.strip()] = value.strip()
-    
-    # Add token if provided
-    if args.token:
-        custom_headers['Authorization'] = f'Bearer {args.token}'
+
+    # Initialize auth manager (maps -t/-H when no profile is specified)
+    auth_manager = AuthManager.from_cli_args(args, reporter=reporter)
+    auth_manager.select_provider(token=args.token, headers=custom_headers)
     
     # Initialize GraphQL client
     try:
@@ -134,7 +161,8 @@ def main():
             headers=custom_headers,
             proxy=args.proxy,
             delay=args.delay,
-            verbose=args.verbose
+            verbose=args.verbose,
+            auth_manager=auth_manager
         )
         reporter.print_info(f"Target: {args.url}")
         reporter.print_info(f"Profile: {args.profile}")
@@ -202,10 +230,18 @@ def main():
         reporter.print_section_header(scanner_name)
         try:
             findings = scanner.scan()
-            all_findings.extend(findings)
-            
+            # Sanitize findings to avoid leaking secrets in output/report files
+            safe_findings = []
             if findings:
-                for finding in findings:
+                for f in findings:
+                    try:
+                        safe_findings.append(auth_manager.sanitize_finding(f))
+                    except Exception:
+                        safe_findings.append(f)
+            all_findings.extend(safe_findings)
+            
+            if safe_findings:
+                for finding in safe_findings:
                     reporter.print_finding(finding)
             else:
                 reporter.print_success("No issues found")

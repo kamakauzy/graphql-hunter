@@ -114,6 +114,45 @@ python graphql-hunter.py -u https://api.example.com/graphql -H "Authorization: B
 python graphql-hunter.py -u https://api.example.com/graphql -H "X-API-Key: KEY" -H "X-User-ID: 123"
 ```
 
+### Advanced Authentication Workflows (OAuth, cookie sessions, CSRF)
+
+GraphQL Hunter can also run **auth workflows** (token acquisition + refresh + cookie sessions) via **auth profiles** in `config/auth.yaml`.
+
+```bash
+# OAuth2 client-credentials (service-to-service)
+python graphql-hunter.py -u https://api.example.com/graphql \
+  --auth-profile oauth2_client_credentials \
+  --auth-var client_id=YOUR_CLIENT_ID \
+  --auth-var client_secret=YOUR_CLIENT_SECRET \
+  --auth-var scope="read:graphql"
+
+# OAuth2 auth-code (semi-manual: open URL, then paste code)
+python graphql-hunter.py -u https://api.example.com/graphql \
+  --auth-profile oauth2_auth_code \
+  --auth-var client_id=YOUR_CLIENT_ID \
+  --auth-var client_secret=YOUR_CLIENT_SECRET \
+  --auth-var oauth_code=PASTE_CODE_HERE
+
+# Cookie session + CSRF (semi-manual vars; steps defined in config/auth.yaml)
+python graphql-hunter.py -u https://api.example.com/graphql \
+  --auth-profile cookie_session_with_csrf \
+  --auth-var username=YOUR_USERNAME \
+  --auth-var password=YOUR_PASSWORD
+```
+
+Notes:
+- The default auth config path is `config/auth.yaml` (safe-to-commit template; **do not store secrets** in it).
+- You can also provide variables via environment variables prefixed with `GQLH_` (example: `GQLH_CLIENT_ID`, `GQLH_CLIENT_SECRET`).
+- Verbose output and reports **redact** common secrets (tokens, cookies, passwords).
+
+### Auth Wizard (interactive)
+
+If you prefer an interactive prompt that outputs a ready-to-run command (without printing secrets), run:
+
+```bash
+python graphql-hunter.py --auth-wizard
+```
+
 ### Output Options
 
 ```bash
@@ -257,6 +296,14 @@ Required Arguments:
 Authentication & Headers:
   -H, --header HEADER           Custom headers (can be used multiple times)
   -t, --token TOKEN             Bearer token for authentication
+
+Auth Workflow Engine:
+  --auth-config FILE            Auth config YAML path (default: config/auth.yaml)
+  --auth-profile NAME           Auth profile name from auth config
+  --auth-var KEY=VALUE          Auth variable override (can be used multiple times)
+  --auth-detect                 Enable best-effort auth/CSRF diagnostics (default)
+  --no-auth-detect              Disable best-effort auth/CSRF diagnostics
+  --auth-wizard                 Interactive auth wizard (prints a ready-to-run command without exposing secrets)
 
 Scan Configuration:
   -p, --profile PROFILE         Scan profile: quick, standard, deep, stealth (default: standard)
