@@ -610,6 +610,14 @@ Overall Risk: CRITICAL - Immediate action required! (Translation: panic responsi
 ```
 **Solution**: Introspection is disabled (good!) but some tests will be limited.
 
+## Unit Tests
+
+Run the offline unit test suite:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+```
+
 ## Project Structure
 
 *For the curious and the contributors*
