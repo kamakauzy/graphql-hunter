@@ -75,8 +75,12 @@ class InjectionScanner:
             return findings
         
         # Get fields with arguments
-        self.reporter.print_info("Testing SQL injection on fields with arguments...")
+        self.reporter.print_info("Testing SQL injection on queries with arguments...")
         findings.extend(self._test_sql_injection())
+        
+        # Test mutations for injection vulnerabilities
+        self.reporter.print_info("Testing SQL injection on mutations...")
+        findings.extend(self._test_mutation_injection())
         
         if self.config.get('enable_deep_injection', True):
             self.reporter.print_info("Testing NoSQL injection...")
@@ -286,6 +290,72 @@ class InjectionScanner:
                 url=self.client.url
             ))
                             return findings
+                
+                tested_count += 1
+        
+        return findings
+    
+    def _test_mutation_injection(self) -> List[Dict]:
+        """Test mutations for injection vulnerabilities"""
+        findings = []
+        
+        mutations = self.client.get_mutations()
+        if not mutations:
+            return findings
+        
+        tested_count = 0
+        max_tests = 5  # Limit testing to avoid overwhelming the API
+        
+        for mutation_def in mutations:
+            if tested_count >= max_tests:
+                break
+            
+            mutation_name = mutation_def.get('name')
+            args = mutation_def.get('args', [])
+            
+            if not args:
+                continue
+            
+            # Test each argument with SQL injection payloads
+            for arg in args[:2]:  # Test first 2 args per mutation
+                arg_name = arg.get('name')
+                arg_type = arg.get('type', {})
+                
+                # Only test String and ID arguments (user input)
+                type_name = self._extract_type_name(arg_type)
+                if type_name != 'String' and type_name != 'ID':
+                    continue
+                
+                for payload in self.sql_payloads[:3]:  # Test first 3 payloads
+                    # Build mutation with injection payload
+                    var_decl = f'${arg_name}: {type_name}!'
+                    mutation_str = f'mutation TestMutation({var_decl}) {{ {mutation_name}({arg_name}: ${arg_name}) {{ __typename }} }}'
+                    variables = {arg_name: payload}
+                    
+                    result = self.client.query(mutation_str, variables=variables)
+                    
+                    if result.get('errors'):
+                        error_text = str(result['errors'])
+                        
+                        if detect_sql_error(error_text):
+                            findings.append(create_finding(
+                                title="SQL Injection Vulnerability in Mutation",
+                                severity="CRITICAL",
+                                description=f"SQL error messages detected when testing mutation {mutation_name}.{arg_name} with injection payload, indicating a SQL injection vulnerability in mutations.",
+                                impact="SQL injection in mutations is particularly dangerous as it can allow attackers to modify or delete data, bypass authentication, or escalate privileges through data manipulation.",
+                                remediation="Use parameterized queries or ORM methods that prevent SQL injection. Never concatenate user input directly into SQL queries. Implement strict input validation for all mutation arguments.",
+                                cwe="CWE-89: SQL Injection",
+                                evidence={
+                                    'mutation': mutation_name,
+                                    'argument': arg_name,
+                                    'payload': payload,
+                                    'error': error_text[:500]
+                                },
+                                poc=mutation_str,
+                                url=self.client.url
+                            ))
+                            tested_count += 1
+                            return findings  # Stop after first finding
                 
                 tested_count += 1
         

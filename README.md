@@ -22,6 +22,12 @@ A comprehensive GraphQL security testing tool that hunts down vulnerabilities in
 - **Batching Attacks** - Tests if attackers can spam your API like it's 2010
 - **Aliasing Abuse** - Checks if you're multiplying vulnerabilities like rabbits
 - **Mutation Security** - Because `deletEverything` shouldn't be publicly accessible
+- **Rate Limiting** - Tests if your API can handle a flood of requests (spoiler: probably not)
+- **CSRF Protection** - Checks if mutations are vulnerable to cross-site request forgery
+- **File Upload** - Tests for path traversal, oversized files, and malicious extensions
+- **Mass Assignment** - Detects if mutations accept unexpected sensitive fields
+- **Brute-Force Protection** - Tests login mutations for rate limiting and account lockout
+- **Token Expiration** - Verifies JWT tokens properly expire and are rejected when expired
 
 ### [+] User-Friendly Interface
 
@@ -395,6 +401,9 @@ Scanner Selection:
   --skip-introspection          Skip introspection scanner
   --skip-info-disclosure        Skip information disclosure checks
   --skip-auth                   Skip authentication/authorization tests
+  --skip-rate-limit             Skip rate limiting tests
+  --skip-csrf                   Skip CSRF tests
+  --skip-file-upload            Skip file upload tests
   --skip-injection              Skip injection tests
   --skip-dos                    Skip DoS vector tests
   --skip-batching               Skip batching attack tests
@@ -403,6 +412,11 @@ Scanner Selection:
   --skip-mutation-fuzzing       Skip mutation fuzzing
   --skip-xss                    Skip XSS tests
   --skip-jwt                    Skip JWT security tests
+  --skip-rate-limit             Skip rate limiting tests
+  --skip-csrf                   Skip CSRF tests
+  --skip-file-upload            Skip file upload tests
+  --brute-force-attempts N      Number of brute-force attempts (default: 20)
+  --rate-limit-requests N       Number of concurrent requests for rate limit test (default: 100)
 
 Output Options:
   -o, --output FILE             Output JSON file path
@@ -508,6 +522,36 @@ Example critical finding:
 **Impact**: Privacy? Never heard of her  
 **Remediation**: Check if user owns the resource before mutating
 
+### 8. Rate Limiting Missing
+
+**Issue**: No rate limiting on API endpoints  
+**Impact**: Brute-force attacks and DoS become trivial  
+**Remediation**: Implement rate limiting (100-1000 requests/minute per IP)
+
+### 9. CSRF Vulnerabilities
+
+**Issue**: Mutations accept requests without Origin validation  
+**Impact**: Attackers can perform actions on behalf of users  
+**Remediation**: Validate Origin/Referer headers, use CSRF tokens, implement SameSite cookies
+
+### 10. File Upload Vulnerabilities
+
+**Issue**: File uploads vulnerable to path traversal, oversized files, malicious extensions  
+**Impact**: Server compromise, DoS, unauthorized file access  
+**Remediation**: Validate filenames, enforce size limits, check file types (MIME, not extension), store outside web root
+
+### 11. Mass Assignment
+
+**Issue**: Mutations accept unexpected sensitive fields (e.g., `role: "admin"`)  
+**Impact**: Privilege escalation, unauthorized data modification  
+**Remediation**: Use allowlists of accepted fields, explicitly exclude sensitive fields, validate all inputs
+
+### 12. Weak Authentication
+
+**Issue**: No brute-force protection, expired tokens still accepted  
+**Impact**: Account compromise, indefinite token usage  
+**Remediation**: Implement rate limiting on login, account lockout, CAPTCHA, enforce token expiration
+
 ## Remediation Guide
 
 *How to fix the things we found*
@@ -582,7 +626,150 @@ Example critical finding:
 
 7. **Implement Rate Limiting**
    ```javascript
-   // Using graphql-rate-limit
+   // Using express-rate-limit or similar
+   const rateLimit = require('express-rate-limit');
+   
+   const limiter = rateLimit({
+     windowMs: 15 * 60 * 1000, // 15 minutes
+     max: 100 // limit each IP to 100 requests per windowMs
+   });
+   
+   app.use('/graphql', limiter);
+   ```
+
+8. **Protect Against CSRF**
+   ```javascript
+   // Validate Origin header for mutations
+   app.use('/graphql', (req, res, next) => {
+     if (req.method === 'POST' && req.body.query.includes('mutation')) {
+       const origin = req.headers.origin;
+       const expectedOrigin = process.env.ALLOWED_ORIGIN;
+       if (origin !== expectedOrigin) {
+         return res.status(403).json({ error: 'CSRF validation failed' });
+       }
+     }
+     next();
+   });
+   ```
+
+9. **Secure File Uploads**
+   ```javascript
+   // Validate file uploads
+   const multer = require('multer');
+   const upload = multer({
+     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+     fileFilter: (req, file, cb) => {
+       const allowedTypes = ['image/jpeg', 'image/png'];
+       if (allowedTypes.includes(file.mimetype)) {
+         cb(null, true);
+       } else {
+         cb(new Error('Invalid file type'));
+       }
+     },
+     storage: multer.diskStorage({
+       destination: '/uploads', // Outside web root
+       filename: (req, file, cb) => {
+         // Generate unique filename
+         cb(null, `${Date.now()}-${Math.random().toString(36)}.${file.originalname.split('.').pop()}`);
+       }
+     })
+   });
+   ```
+
+10. **Prevent Mass Assignment**
+    ```javascript
+    // Use allowlists for mutation inputs
+    const allowedFields = ['name', 'email', 'bio'];
+    const input = {};
+    for (const field of allowedFields) {
+      if (args.input[field] !== undefined) {
+        input[field] = args.input[field];
+      }
+    }
+    // Only allowed fields are copied, sensitive fields ignored
+    ```
+
+11. **Implement Brute-Force Protection**
+    ```javascript
+    // Rate limit login mutations
+    const loginLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 5, // 5 attempts per 15 minutes
+      message: 'Too many login attempts, please try again later'
+    });
+    
+    // Account lockout after multiple failures
+    let failedAttempts = {};
+    if (failedAttempts[email] >= 5) {
+      throw new Error('Account temporarily locked');
+    }
+    ```
+
+12. **Enforce Token Expiration**
+    ```javascript
+    // Validate JWT expiration
+    const jwt = require('jsonwebtoken');
+    const decoded = jwt.verify(token, secret);
+    const now = Math.floor(Date.now() / 1000);
+    if (decoded.exp < now) {
+      throw new Error('Token expired');
+    }
+    ```
+
+## Advanced Scanners
+
+*The new kids on the block*
+
+### Rate Limiting Scanner
+
+Tests your API's ability to handle request flooding:
+- Sends 100+ concurrent requests
+- Detects 429 (Too Many Requests) responses
+- Measures response time degradation
+- Tests mutation-specific rate limits
+
+**Usage**: Automatically enabled in standard/deep profiles. Disabled in safe mode.
+
+### CSRF Scanner
+
+Tests mutations for Cross-Site Request Forgery vulnerabilities:
+- Detects cookie-based authentication
+- Tests with missing Origin header
+- Tests with mismatched Origin header
+- Validates CSRF token presence
+
+**Usage**: Automatically enabled. Only tests when cookies are present.
+
+### File Upload Scanner
+
+Detects and tests file upload mutations:
+- Identifies Upload scalar type in schema
+- Recommends testing for path traversal
+- Recommends testing for oversized files
+- Recommends testing for malicious extensions
+
+**Usage**: Automatically enabled. Provides recommendations for manual testing.
+
+### Enhanced Mutation Testing
+
+The mutation fuzzer now includes:
+- **Mass Assignment Testing**: Detects if mutations accept unexpected sensitive fields
+- **Enhanced IDOR Detection**: Better identification and actionable recommendations
+- **Privilege Escalation Testing**: Tests for role/admin field injection
+
+### Enhanced Authentication Testing
+
+The auth scanner now includes:
+- **Brute-Force Testing**: Tests login mutations for rate limiting and account lockout
+- **Token Expiration Testing**: Verifies JWT tokens properly expire (JWT scanner)
+
+### Enhanced Injection/XSS Testing
+
+Both scanners now test mutations (not just queries):
+- **Injection Scanner**: Tests all mutation arguments for SQL/NoSQL/command injection
+- **XSS Scanner**: Tests all mutations with String arguments (removed 3-mutation limit)
+
+## Testing Guidelines
    import { createRateLimitDirective } from 'graphql-rate-limit';
    
    const rateLimitDirective = createRateLimitDirective({

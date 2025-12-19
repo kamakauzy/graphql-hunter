@@ -27,6 +27,9 @@ from circular_query_scanner import CircularQueryScanner
 from mutation_fuzzer import MutationFuzzer
 from xss_scanner import XSSScanner
 from jwt_scanner import JWTScanner
+from rate_limiting_scanner import RateLimitingScanner
+from csrf_scanner import CSRFScanner
+from file_upload_scanner import FileUploadScanner
 
 from auth.manager import AuthManager
 from auth.wizard import run_auth_wizard
@@ -117,6 +120,16 @@ Examples:
                         help='Skip XSS tests')
     parser.add_argument('--skip-jwt', action='store_true',
                         help='Skip JWT security tests')
+    parser.add_argument('--skip-rate-limit', action='store_true',
+                        help='Skip rate limiting tests')
+    parser.add_argument('--skip-csrf', action='store_true',
+                        help='Skip CSRF tests')
+    parser.add_argument('--skip-file-upload', action='store_true',
+                        help='Skip file upload tests')
+    parser.add_argument('--brute-force-attempts', type=int, default=20,
+                        help='Number of brute-force attempts for login testing (default: 20)')
+    parser.add_argument('--rate-limit-requests', type=int, default=100,
+                        help='Number of concurrent requests for rate limit test (default: 100)')
     
     # Output options
     parser.add_argument('-o', '--output', help='Output JSON file path')
@@ -459,9 +472,17 @@ def main():
     # Configure scan based on profile
     profile_config = get_profile_config(args.profile)
     
+    # Apply CLI arguments to config
+    profile_config['brute_force_attempts'] = args.brute_force_attempts
+    profile_config['rate_limit_concurrency'] = args.rate_limit_requests
+    profile_config['rate_limit_requests'] = args.rate_limit_requests
+    profile_config['max_xss_tests'] = profile_config.get('max_xss_tests', 20)
+    
     # Apply safe mode
     if args.safe_mode:
         profile_config['enable_dos'] = False
+        profile_config['enable_rate_limit_testing'] = False
+        profile_config['brute_force_attempts'] = 5  # Reduce brute-force attempts in safe mode
     
     # Store all findings
     all_findings = []
@@ -507,6 +528,15 @@ def main():
     
     if not args.skip_jwt:
         scanners.append(('JWT Security', JWTScanner(client, reporter, profile_config)))
+    
+    if not args.skip_rate_limit and profile_config.get('enable_rate_limit_testing', True):
+        scanners.append(('Rate Limiting', RateLimitingScanner(client, reporter, profile_config)))
+    
+    if not args.skip_csrf and profile_config.get('enable_csrf_testing', True):
+        scanners.append(('CSRF Protection', CSRFScanner(client, reporter, profile_config)))
+    
+    if not args.skip_file_upload and profile_config.get('enable_file_upload_testing', True):
+        scanners.append(('File Upload', FileUploadScanner(client, reporter, profile_config)))
     
     # Execute scanners
     for scanner_name, scanner in scanners:
@@ -591,6 +621,12 @@ def get_profile_config(profile):
             'enable_dos': False,
             'enable_deep_injection': False,
             'batch_size': 5,
+            'enable_rate_limit_testing': False,
+            'enable_csrf_testing': True,
+            'enable_file_upload_testing': True,
+            'brute_force_attempts': 10,
+            'rate_limit_concurrency': 50,
+            'rate_limit_requests': 50,
         },
         'standard': {
             'depth_limit': 5,
@@ -598,6 +634,12 @@ def get_profile_config(profile):
             'enable_dos': True,
             'enable_deep_injection': True,
             'batch_size': 10,
+            'enable_rate_limit_testing': True,
+            'enable_csrf_testing': True,
+            'enable_file_upload_testing': True,
+            'brute_force_attempts': 20,
+            'rate_limit_concurrency': 100,
+            'rate_limit_requests': 100,
         },
         'deep': {
             'depth_limit': 10,
@@ -605,6 +647,12 @@ def get_profile_config(profile):
             'enable_dos': True,
             'enable_deep_injection': True,
             'batch_size': 20,
+            'enable_rate_limit_testing': True,
+            'enable_csrf_testing': True,
+            'enable_file_upload_testing': True,
+            'brute_force_attempts': 30,
+            'rate_limit_concurrency': 150,
+            'rate_limit_requests': 150,
         },
         'stealth': {
             'depth_limit': 3,
@@ -612,6 +660,12 @@ def get_profile_config(profile):
             'enable_dos': False,
             'enable_deep_injection': False,
             'batch_size': 3,
+            'enable_rate_limit_testing': False,
+            'enable_csrf_testing': True,
+            'enable_file_upload_testing': True,
+            'brute_force_attempts': 5,
+            'rate_limit_concurrency': 20,
+            'rate_limit_requests': 20,
         }
     }
     return configs.get(profile, configs['standard'])

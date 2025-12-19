@@ -150,4 +150,32 @@ class SchemaParser:
             'has_mutations': total_mutations > 0,
             'has_subscriptions': total_subscriptions > 0
         }
+    
+    def find_upload_mutations(self) -> List[Dict]:
+        """Find mutations that accept Upload type arguments"""
+        upload_mutations = []
+        
+        mutations = self.get_mutations()
+        for mutation in mutations:
+            args = mutation.get('args', [])
+            for arg in args:
+                arg_type = self._extract_type_name(arg.get('type', {}))
+                if arg_type == 'Upload' or 'Upload' in str(arg_type):
+                    upload_mutations.append(mutation)
+                    break
+        
+        return upload_mutations
+    
+    def _extract_type_name(self, type_def: Dict) -> str:
+        """Extract type name from type definition"""
+        if not type_def:
+            return "Unknown"
+        
+        if type_def.get('name'):
+            return type_def['name']
+        
+        if type_def.get('ofType'):
+            return self._extract_type_name(type_def['ofType'])
+        
+        return "Unknown"
 
