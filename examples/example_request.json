@@ -1,0 +1,15 @@
+{
+  "name": "Example GraphQL Request",
+  "url": "https://api.example.com/graphql",
+  "method": "POST",
+  "headers": {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer YOUR_TOKEN_HERE"
+  },
+  "query": "mutation CreateUser($name: String!, $email: String!) { createUser(name: $name, email: $email) { id name email } }",
+  "variables": {
+    "name": "Test User",
+    "email": "test@example.com"
+  },
+  "operation_name": "CreateUser"
+}

@@ -452,4 +452,129 @@ class GraphQLClient:
         if self.introspection_enabled is None:
             self.introspect()
         return self.introspection_enabled or False
+    
+    def validate_auth(self, test_query: Optional[str] = None, test_variables: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        Validate authentication by comparing responses with and without auth headers
+        
+        Args:
+            test_query: Optional GraphQL query/mutation to test (default: simple __typename query)
+            test_variables: Optional variables for the test query
+            
+        Returns:
+            Dictionary with validation results:
+            {
+                'auth_working': bool,
+                'auth_required': bool,
+                'status_with_auth': int,
+                'status_without_auth': int,
+                'response_with_auth': Dict,
+                'response_without_auth': Dict,
+                'analysis': str
+            }
+        """
+        if test_query is None:
+            test_query = '{ __typename }'
+        
+        # Test with current auth headers
+        result_with_auth = self.query(test_query, variables=test_variables)
+        status_with_auth = result_with_auth.get('_status_code', 0)
+        
+        # Test without auth (create a minimal client)
+        unauth_headers = {'Content-Type': 'application/json'}
+        unauth_client = GraphQLClient(
+            url=self.url,
+            headers=unauth_headers,
+            proxy=self.proxies.get('http') if self.proxies else None,
+            delay=0,
+            verbose=False,
+            timeout=self.timeout,
+            verify=self.verify,
+            test_connection=False
+        )
+        result_without_auth = unauth_client.query(test_query, variables=test_variables, bypass_auth=True)
+        status_without_auth = result_without_auth.get('_status_code', 0)
+        
+        # Analyze results
+        auth_working = False
+        auth_required = False
+        analysis = ""
+        
+        # Check for explicit auth errors
+        errors_with_auth = result_with_auth.get('errors', [])
+        errors_without_auth = result_without_auth.get('errors', [])
+        
+        error_msgs_with_auth = [e.get('message', '').lower() for e in errors_with_auth]
+        error_msgs_without_auth = [e.get('message', '').lower() for e in errors_without_auth]
+        
+        # If we get 401/403 without auth but 200 with auth, auth is working
+        if status_without_auth in [401, 403] and status_with_auth == 200:
+            auth_working = True
+            auth_required = True
+            analysis = "Authentication is WORKING - requests without auth are rejected (401/403), requests with auth succeed (200)"
+        # If we get auth errors without auth but not with auth
+        elif any('unauthorized' in m or 'authentication' in m or 'forbidden' in m 
+                 for m in error_msgs_without_auth) and not any('unauthorized' in m or 'authentication' in m or 'forbidden' in m 
+                 for m in error_msgs_with_auth):
+            auth_working = True
+            auth_required = True
+            analysis = "Authentication is WORKING - error messages indicate auth is required and working"
+        # If both return same status and errors, check if it's a permission error
+        elif status_with_auth == status_without_auth and error_msgs_with_auth == error_msgs_without_auth:
+            # Permission errors indicate auth is working but authorization failed
+            if any('permission' in m or 'authorization' in m for m in error_msgs_with_auth):
+                # Permission errors with same response suggest either:
+                # 1. Auth is working but token doesn't have permission (token may be expired/invalid)
+                # 2. Auth is not required and permission check happens anyway
+                # We'll mark as working since permission errors indicate the server is checking auth
+                auth_working = True
+                auth_required = True
+                analysis = "Authentication appears to be WORKING - permission errors indicate auth is being checked. Same error with/without auth suggests: (1) Token may be expired/invalid, (2) Token not required for this endpoint, or (3) Permission check happens regardless of auth"
+            else:
+                auth_required = False
+                analysis = "Authentication may NOT be required - identical responses with and without auth headers"
+        # If both succeed, auth may not be required OR mutation/query doesn't need auth
+        elif status_with_auth == 200 and status_without_auth == 200:
+            if result_with_auth.get('data') and result_without_auth.get('data'):
+                # Both have data - check if they're different
+                if result_with_auth.get('data') != result_without_auth.get('data'):
+                    auth_working = True
+                    auth_required = True
+                    analysis = "Authentication is WORKING - different data returned with vs without auth"
+                else:
+                    auth_required = False
+                    analysis = "Authentication may NOT be required - identical data returned with and without auth"
+            else:
+                # Both have errors - check if they're permission errors
+                if error_msgs_with_auth == error_msgs_without_auth:
+                    # Same errors - check if permission-related
+                    if any('permission' in m or 'authorization' in m for m in error_msgs_with_auth):
+                        auth_working = True
+                        auth_required = True
+                        analysis = "Authentication appears to be WORKING - permission errors indicate auth is checked. Same error with/without auth suggests token may be expired/invalid or not required"
+                    else:
+                        auth_required = False
+                        analysis = "Authentication may NOT be required - same errors with and without auth (likely validation/business logic error)"
+                else:
+                    auth_working = True
+                    auth_required = True
+                    analysis = "Authentication appears to be WORKING - different errors with vs without auth"
+        # If with auth succeeds but without fails
+        elif status_with_auth == 200 and status_without_auth != 200:
+            auth_working = True
+            auth_required = True
+            analysis = f"Authentication is WORKING - request with auth succeeds (200), without auth fails ({status_without_auth})"
+        else:
+            # Ambiguous case
+            analysis = f"Unable to determine auth status - with auth: {status_with_auth}, without auth: {status_without_auth}"
+        
+        return {
+            'auth_working': auth_working,
+            'auth_required': auth_required,
+            'status_with_auth': status_with_auth,
+            'status_without_auth': status_without_auth,
+            'response_with_auth': result_with_auth,
+            'response_without_auth': result_without_auth,
+            'analysis': analysis
+        }
 

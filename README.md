@@ -153,6 +153,87 @@ If you prefer an interactive prompt that outputs a ready-to-run command (without
 python graphql-hunter.py --auth-wizard
 ```
 
+### Auto-Discovery
+
+*"Just figure it out from my notes"*
+
+The tool can automatically discover authentication and configuration from notes, JSON, YAML files, or any text:
+
+```bash
+# Auto-discover from notes file
+python graphql-hunter.py --auto-discover notes.txt
+
+# Show what was discovered (without running scan)
+python graphql-hunter.py --auto-discover notes.txt --show-discovery
+
+# Auto-discover from multiple sources
+python graphql-hunter.py --auto-discover notes.txt config.json request.yaml
+```
+
+**What it discovers:**
+- URLs and endpoints
+- Authentication methods (tokenAuth, OAuth, etc.)
+- Credentials (email, password, tokens)
+- Headers and tokens
+- Queries and mutations from files
+- Generates ready-to-run commands
+
+**Example:** Provide a notes file with email/password/URL, and the tool will automatically:
+1. Detect the authentication method
+2. Configure the auth profile
+3. Set up credentials
+4. Run the scan
+
+See `AUTO_DISCOVERY.md` for detailed documentation.
+
+### Importing Requests
+
+*"I already have these requests, why retype them?"*
+
+GraphQL Hunter can import requests from various formats to make testing easier:
+
+```bash
+# Import from Postman Collection (JSON)
+python graphql-hunter.py --import my-collection.json -u https://api.example.com/graphql
+
+# Import from JSON file
+python graphql-hunter.py --import request.json --validate-auth
+
+# Import from YAML file
+python graphql-hunter.py --import request.yaml -H "Authorization: Bearer TOKEN"
+
+# Import from cURL command
+python graphql-hunter.py --import-curl "curl -X POST https://api.example.com/graphql -H 'Authorization: Bearer TOKEN' -d '{\"query\":\"{__typename}\"}'"
+
+# List all requests in a Postman collection
+python graphql-hunter.py --import collection.json --list-imported
+```
+
+**Supported Formats:**
+- **Postman Collection v2.1** - Automatically extracts all requests from collection
+- **JSON** - Simple request format with url, headers, query, variables
+- **YAML** - Same as JSON but in YAML format
+- **cURL commands** - Parse cURL command strings
+- **Raw HTTP** - Parse raw HTTP request strings
+
+**Example JSON format:**
+```json
+{
+  "url": "https://api.example.com/graphql",
+  "headers": {
+    "Authorization": "Bearer TOKEN"
+  },
+  "query": "mutation { ... }",
+  "variables": { "key": "value" },
+  "operation_name": "MyMutation"
+}
+```
+
+When importing, the tool will automatically:
+- Extract URL, headers, query, and variables
+- Use the imported request for auth validation if `--validate-auth` is used
+- Merge imported headers with command-line headers (CLI headers take precedence)
+
 ### Output Options
 
 ```bash
