@@ -1,0 +1,125 @@
+package graphqlhunter;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+public final class GraphQLHunterModels
+{
+    private GraphQLHunterModels()
+    {
+    }
+
+    public enum FindingSeverity
+    {
+        CRITICAL,
+        HIGH,
+        MEDIUM,
+        LOW,
+        INFO
+    }
+
+    public enum FindingStatus
+    {
+        CONFIRMED,
+        POTENTIAL,
+        MANUAL_REVIEW
+    }
+
+    public enum ScanProfile
+    {
+        QUICK,
+        STANDARD,
+        DEEP,
+        STEALTH
+    }
+
+    public static final class ScanRequest
+    {
+        public String source = "manual";
+        public String url = "";
+        public String method = "POST";
+        public String query = "";
+        public Object variables = new LinkedHashMap<String, Object>();
+        public String operationName = "";
+        public String rawBody = "";
+        public boolean batch;
+        public Map<String, String> headers = new LinkedHashMap<>();
+
+        public ScanRequest copy()
+        {
+            ScanRequest copy = new ScanRequest();
+            copy.source = source;
+            copy.url = url;
+            copy.method = method;
+            copy.query = query;
+            copy.variables = variables;
+            copy.operationName = operationName;
+            copy.rawBody = rawBody;
+            copy.batch = batch;
+            copy.headers = new LinkedHashMap<>(headers);
+            return copy;
+        }
+    }
+
+    public static final class Finding
+    {
+        public String title = "";
+        public String scanner = "";
+        public FindingSeverity severity = FindingSeverity.INFO;
+        public FindingStatus status = FindingStatus.POTENTIAL;
+        public String description = "";
+        public String impact = "";
+        public String remediation = "";
+        public String proof = "";
+        public String requestSnippet = "";
+        public Map<String, Object> evidence = new LinkedHashMap<>();
+
+        public String details()
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.append("Title: ").append(title).append(System.lineSeparator());
+            builder.append("Scanner: ").append(scanner).append(System.lineSeparator());
+            builder.append("Severity: ").append(severity).append(System.lineSeparator());
+            builder.append("Status: ").append(status).append(System.lineSeparator()).append(System.lineSeparator());
+
+            if (description != null && !description.isBlank())
+            {
+                builder.append("Description").append(System.lineSeparator());
+                builder.append(description).append(System.lineSeparator()).append(System.lineSeparator());
+            }
+            if (impact != null && !impact.isBlank())
+            {
+                builder.append("Impact").append(System.lineSeparator());
+                builder.append(impact).append(System.lineSeparator()).append(System.lineSeparator());
+            }
+            if (remediation != null && !remediation.isBlank())
+            {
+                builder.append("Remediation").append(System.lineSeparator());
+                builder.append(remediation).append(System.lineSeparator()).append(System.lineSeparator());
+            }
+            if (proof != null && !proof.isBlank())
+            {
+                builder.append("Proof").append(System.lineSeparator());
+                builder.append(proof).append(System.lineSeparator()).append(System.lineSeparator());
+            }
+            if (requestSnippet != null && !requestSnippet.isBlank())
+            {
+                builder.append("Request Snippet").append(System.lineSeparator());
+                builder.append(requestSnippet).append(System.lineSeparator()).append(System.lineSeparator());
+            }
+            if (!evidence.isEmpty())
+            {
+                builder.append("Evidence").append(System.lineSeparator());
+                evidence.forEach((key, value) -> builder.append("- ").append(key).append(": ").append(String.valueOf(value)).append(System.lineSeparator()));
+            }
+
+            return builder.toString();
+        }
+    }
+
+    public static final class ExtensionState
+    {
+        public ScanRequest lastRequest = new ScanRequest();
+        public String scanProfile = ScanProfile.STANDARD.name();
+    }
+}

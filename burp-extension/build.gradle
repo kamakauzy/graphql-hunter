@@ -1,0 +1,73 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.graphqlhunter'
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    withSourcesJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compileOnly 'net.portswigger.burp.extensions:montoya-api:2026.2'
+    testCompileOnly 'net.portswigger.burp.extensions:montoya-api:2026.2'
+    testRuntimeOnly 'net.portswigger.burp.extensions:montoya-api:2026.2'
+
+    implementation platform('com.fasterxml.jackson:jackson-bom:2.20.0')
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
+    testImplementation platform('org.junit:junit-bom:6.0.1')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+tasks.named('jar') {
+    archiveClassifier = 'plain'
+}
+
+tasks.register('fatJar', Jar) {
+    group = 'build'
+    description = 'Builds a single Burp-ready extension JAR.'
+    archiveFileName = 'GraphQLHunterBurp.jar'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from sourceSets.main.output
+    dependsOn configurations.runtimeClasspath
+    from {
+        configurations.runtimeClasspath.collect { dependency ->
+            dependency.isDirectory() ? dependency : zipTree(dependency)
+        }
+    }
+
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+
+    manifest {
+        attributes(
+            'Implementation-Title': 'GraphQL Hunter Burp Extension',
+            'Implementation-Version': project.version,
+            'Burp-Extension-Class': 'burp.GraphQLHunterExtension'
+        )
+    }
+}
+
+tasks.named('assemble') {
+    dependsOn tasks.named('fatJar')
+}
