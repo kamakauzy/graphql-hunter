@@ -2,13 +2,19 @@ package graphqlhunter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import graphqlhunter.auth.AuthManager;
+import graphqlhunter.auth.flow.FlowRunner;
 
 import java.io.IOException;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
+import java.net.HttpCookie;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -19,6 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public final class GraphQLHunterCore
 {
@@ -108,20 +115,65 @@ public final class GraphQLHunterCore
         GraphQLResponse postJson(String url, Map<String, String> headers, Object body) throws IOException, InterruptedException;
     }
 
-    public static final class JavaHttpTransport implements GraphQLTransport
+    public interface SessionAwareTransport extends GraphQLTransport
     {
+        GraphQLResponse executeHttp(
+            String method,
+            String url,
+            Map<String, String> headers,
+            Object jsonBody,
+            Map<String, String> formBody,
+            String dataBody
+        ) throws IOException, InterruptedException;
+
+        String getCookie(String name);
+    }
+
+    public static final class JavaHttpTransport implements SessionAwareTransport
+    {
+        private final CookieManager cookieManager = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
         private final HttpClient httpClient = HttpClient.newBuilder()
+            .cookieHandler(cookieManager)
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(20))
             .build();
+        private final int timeoutSeconds;
+        private final double delaySeconds;
+
+        public JavaHttpTransport()
+        {
+            this(30, 0.0);
+        }
+
+        public JavaHttpTransport(int timeoutSeconds, double delaySeconds)
+        {
+            this.timeoutSeconds = timeoutSeconds;
+            this.delaySeconds = delaySeconds;
+        }
 
         @Override
         public GraphQLResponse postJson(String url, Map<String, String> headers, Object body) throws IOException, InterruptedException
         {
-            String payload = GraphQLHunterJson.mapper().writeValueAsString(body);
+            return executeHttp("POST", url, headers, body, null, null);
+        }
+
+        @Override
+        public GraphQLResponse executeHttp(
+            String method,
+            String url,
+            Map<String, String> headers,
+            Object jsonBody,
+            Map<String, String> formBody,
+            String dataBody
+        ) throws IOException, InterruptedException
+        {
+            if (delaySeconds > 0)
+            {
+                Thread.sleep(Math.round(delaySeconds * 1000));
+            }
+
             HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(30))
-                .POST(HttpRequest.BodyPublishers.ofString(payload));
+                .timeout(Duration.ofSeconds(timeoutSeconds <= 0 ? 30 : timeoutSeconds));
 
             boolean contentTypeSet = false;
             for (Map.Entry<String, String> entry : headers.entrySet())
@@ -141,15 +193,57 @@ public final class GraphQLHunterCore
                 }
                 builder.header(headerName, entry.getValue());
             }
-            if (!contentTypeSet)
+
+            String verb = method == null || method.isBlank() ? "POST" : method.toUpperCase(Locale.ROOT);
+            if (jsonBody != null)
             {
-                builder.header("Content-Type", "application/json");
+                if (!contentTypeSet)
+                {
+                    builder.header("Content-Type", "application/json");
+                }
+                builder.method(verb, HttpRequest.BodyPublishers.ofString(GraphQLHunterJson.mapper().writeValueAsString(jsonBody)));
+            }
+            else if (formBody != null && !formBody.isEmpty())
+            {
+                if (!contentTypeSet)
+                {
+                    builder.header("Content-Type", "application/x-www-form-urlencoded");
+                }
+                String encoded = formBody.entrySet().stream()
+                    .map(entry -> URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8) + "=" + URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8))
+                    .collect(Collectors.joining("&"));
+                builder.method(verb, HttpRequest.BodyPublishers.ofString(encoded));
+            }
+            else if (dataBody != null)
+            {
+                builder.method(verb, HttpRequest.BodyPublishers.ofString(dataBody));
+            }
+            else
+            {
+                builder.method(verb, HttpRequest.BodyPublishers.noBody());
             }
 
             long started = System.nanoTime();
             HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
             long elapsedMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
             return GraphQLResponse.from(response.statusCode(), response.headers(), response.body(), elapsedMillis);
+        }
+
+        @Override
+        public String getCookie(String name)
+        {
+            if (name == null || name.isBlank())
+            {
+                return null;
+            }
+            for (HttpCookie cookie : cookieManager.getCookieStore().getCookies())
+            {
+                if (cookie.getName().equals(name))
+                {
+                    return cookie.getValue();
+                }
+            }
+            return null;
         }
     }
 
@@ -247,6 +341,11 @@ public final class GraphQLHunterCore
 
         public GraphQLResponse query(String query, Object variables, String operationName)
         {
+            return query(query, variables, operationName, Map.of(), false);
+        }
+
+        public GraphQLResponse query(String query, Object variables, String operationName, Map<String, String> extraHeaders, boolean bypassAuth)
+        {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("query", query);
             if (variables != null)
@@ -259,14 +358,14 @@ public final class GraphQLHunterCore
             }
             try
             {
-                if (authManager != null)
+                if (authManager != null && !bypassAuth)
                 {
                     authManager.ensurePrepared(this);
                 }
-                GraphQLResponse response = transport.postJson(url, mergedHeaders(), payload);
-                if (authManager != null && authManager.maybeRefreshAndRetry(this, response))
+                GraphQLResponse response = transport.postJson(url, mergedHeaders(extraHeaders, bypassAuth), payload);
+                if (authManager != null && !bypassAuth && authManager.maybeRefreshAndRetry(this, response))
                 {
-                    response = transport.postJson(url, mergedHeaders(), payload);
+                    response = transport.postJson(url, mergedHeaders(extraHeaders, bypassAuth), payload);
                 }
                 return response;
             }
@@ -291,10 +390,10 @@ public final class GraphQLHunterCore
                 {
                     authManager.ensurePrepared(this);
                 }
-                GraphQLResponse response = transport.postJson(url, mergedHeaders(), payload);
+                GraphQLResponse response = transport.postJson(url, mergedHeaders(Map.of(), false), payload);
                 if (authManager != null && authManager.maybeRefreshAndRetry(this, response))
                 {
-                    response = transport.postJson(url, mergedHeaders(), payload);
+                    response = transport.postJson(url, mergedHeaders(Map.of(), false), payload);
                 }
                 return response;
             }
@@ -341,12 +440,87 @@ public final class GraphQLHunterCore
             return new LinkedHashMap<>(headers);
         }
 
-        private Map<String, String> mergedHeaders()
+        public FlowRunner.FlowClient flowClient()
+        {
+            return new FlowRunner.FlowClient()
+            {
+                @Override
+                public graphqlhunter.auth.flow.FlowStepResult executeHttp(
+                    String method,
+                    String stepUrl,
+                    Map<String, String> stepHeaders,
+                    Object jsonBody,
+                    Map<String, String> formBody,
+                    String dataBody
+                )
+                {
+                    if (!(transport instanceof SessionAwareTransport sessionAwareTransport))
+                    {
+                        throw new IllegalStateException("Current GraphQL transport does not support generic HTTP flow steps.");
+                    }
+                    try
+                    {
+                        GraphQLResponse response = sessionAwareTransport.executeHttp(method, stepUrl, stepHeaders, jsonBody, formBody, dataBody);
+                        return new graphqlhunter.auth.flow.FlowStepResult(
+                            response.statusCode,
+                            flattenHeaders(response.headers),
+                            response.body,
+                            response.json
+                        );
+                    }
+                    catch (Exception exception)
+                    {
+                        throw new IllegalStateException("HTTP auth flow step failed", exception);
+                    }
+                }
+
+                @Override
+                public graphqlhunter.auth.flow.FlowStepResult executeGraphQl(
+                    String query,
+                    Object variables,
+                    String operationName,
+                    Map<String, String> stepHeaders,
+                    boolean bypassAuth
+                )
+                {
+                    GraphQLResponse response = GraphQLClient.this.query(query, variables, operationName, stepHeaders, bypassAuth);
+                    return new graphqlhunter.auth.flow.FlowStepResult(
+                        response.statusCode,
+                        flattenHeaders(response.headers),
+                        response.body,
+                        response.json
+                    );
+                }
+
+                @Override
+                public String getCookie(String name)
+                {
+                    if (transport instanceof SessionAwareTransport sessionAwareTransport)
+                    {
+                        return sessionAwareTransport.getCookie(name);
+                    }
+                    return null;
+                }
+            };
+        }
+
+        private Map<String, String> flattenHeaders(Map<String, List<String>> headers)
+        {
+            LinkedHashMap<String, String> flattened = new LinkedHashMap<>();
+            headers.forEach((key, values) -> flattened.put(key, values == null || values.isEmpty() ? "" : values.get(0)));
+            return flattened;
+        }
+
+        private Map<String, String> mergedHeaders(Map<String, String> extraHeaders, boolean bypassAuth)
         {
             LinkedHashMap<String, String> merged = new LinkedHashMap<>(headers);
-            if (authManager != null)
+            if (authManager != null && !bypassAuth)
             {
                 merged.putAll(authManager.requestHeaders());
+            }
+            if (extraHeaders != null)
+            {
+                merged.putAll(extraHeaders);
             }
             return merged;
         }
