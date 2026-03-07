@@ -303,6 +303,17 @@ public final class GraphQLHunterCore
         }
     }
 
+    public static final class AuthValidationResult
+    {
+        public boolean authWorking;
+        public boolean authRequired;
+        public int statusWithAuth;
+        public int statusWithoutAuth;
+        public GraphQLResponse responseWithAuth;
+        public GraphQLResponse responseWithoutAuth;
+        public String analysis = "";
+    }
+
     public static final class GraphQLClient
     {
         private final String url;
@@ -438,6 +449,58 @@ public final class GraphQLHunterCore
         public Map<String, String> headers()
         {
             return new LinkedHashMap<>(headers);
+        }
+
+        public AuthValidationResult validateAuth(String query, Object variables)
+        {
+            String testQuery = query == null || query.isBlank() ? "{ __typename }" : query;
+            GraphQLResponse withAuth = query(testQuery, variables, null);
+            GraphQLResponse withoutAuth = withoutAuth().query(testQuery, variables, null);
+
+            AuthValidationResult validation = new AuthValidationResult();
+            validation.statusWithAuth = withAuth.statusCode;
+            validation.statusWithoutAuth = withoutAuth.statusCode;
+            validation.responseWithAuth = withAuth;
+            validation.responseWithoutAuth = withoutAuth;
+
+            String withErrors = withAuth.errorsText().toLowerCase(Locale.ROOT);
+            String withoutErrors = withoutAuth.errorsText().toLowerCase(Locale.ROOT);
+
+            if ((validation.statusWithoutAuth == 401 || validation.statusWithoutAuth == 403) && validation.statusWithAuth == 200)
+            {
+                validation.authWorking = true;
+                validation.authRequired = true;
+                validation.analysis = "Authentication is working: unauthenticated requests are rejected while authenticated requests succeed.";
+                return validation;
+            }
+
+            if ((withoutErrors.contains("unauthorized") || withoutErrors.contains("forbidden") || withoutErrors.contains("authentication"))
+                && !(withErrors.contains("unauthorized") || withErrors.contains("forbidden") || withErrors.contains("authentication")))
+            {
+                validation.authWorking = true;
+                validation.authRequired = true;
+                validation.analysis = "Authentication appears to be working: unauthenticated requests show auth-specific failures.";
+                return validation;
+            }
+
+            if (validation.statusWithAuth == validation.statusWithoutAuth && String.valueOf(withAuth.json).equals(String.valueOf(withoutAuth.json)))
+            {
+                validation.authWorking = false;
+                validation.authRequired = false;
+                validation.analysis = "Authentication may not be required: responses matched with and without auth.";
+                return validation;
+            }
+
+            if (validation.statusWithAuth == 200 && validation.statusWithoutAuth != 200)
+            {
+                validation.authWorking = true;
+                validation.authRequired = true;
+                validation.analysis = "Authentication is working: authenticated request succeeded while unauthenticated request failed.";
+                return validation;
+            }
+
+            validation.analysis = "Auth validation was inconclusive. Review the response details manually.";
+            return validation;
         }
 
         public FlowRunner.FlowClient flowClient()

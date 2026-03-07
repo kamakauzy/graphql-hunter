@@ -9,6 +9,8 @@ import graphqlhunter.GraphQLHunterModels.Finding;
 import graphqlhunter.GraphQLHunterModels.AuthSettings;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
 import graphqlhunter.GraphQLHunterModels.ScanSettings;
+import graphqlhunter.GraphQLHunterCore;
+import graphqlhunter.auth.AuthManager;
 import graphqlhunter.GraphQLHunterPersistence;
 import graphqlhunter.GraphQLHunterScanners;
 import graphqlhunter.config.ConfigurationLoader;
@@ -176,6 +178,38 @@ public final class GraphQLHunterExtension implements BurpExtension
                 catch (Throwable throwable)
                 {
                     logger.error("GraphQL scan execution failed.", throwable);
+                    SwingUtilities.invokeLater(() -> onError.accept(throwable));
+                }
+            });
+        }
+
+        @Override
+        public void validateAuth(ScanRequest request, AuthSettings settings, Consumer<String> onSuccess, Consumer<Throwable> onError)
+        {
+            executorService.submit(() ->
+            {
+                try
+                {
+                    AuthManager authManager = AuthManager.fromState(settings, logger);
+                    GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+                        request.url,
+                        request.headers,
+                        new GraphQLHunterCore.JavaHttpTransport(30, 0.0),
+                        logger,
+                        authManager
+                    );
+                    GraphQLHunterCore.AuthValidationResult validation = client.validateAuth(request.query, request.variables);
+                    String message = "WITH auth: " + validation.statusWithAuth + System.lineSeparator()
+                        + "WITHOUT auth: " + validation.statusWithoutAuth + System.lineSeparator()
+                        + "Auth required: " + validation.authRequired + System.lineSeparator()
+                        + "Auth working: " + validation.authWorking + System.lineSeparator()
+                        + System.lineSeparator()
+                        + validation.analysis;
+                    SwingUtilities.invokeLater(() -> onSuccess.accept(message));
+                }
+                catch (Throwable throwable)
+                {
+                    logger.error("Auth validation failed.", throwable);
                     SwingUtilities.invokeLater(() -> onError.accept(throwable));
                 }
             });
