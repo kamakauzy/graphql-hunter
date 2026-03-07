@@ -13,7 +13,9 @@ import graphqlhunter.config.ConfigurationLoader;
 import graphqlhunter.config.PayloadConfiguration;
 import graphqlhunter.config.ScanConfiguration;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -87,6 +89,14 @@ public final class GraphQLHunterScanners
         if (isEnabled(configuration, "circular"))
         {
             checks.add(new CircularQueryScanner());
+        }
+        if (isEnabled(configuration, "xss"))
+        {
+            checks.add(new XssScanner());
+        }
+        if (isEnabled(configuration, "jwt"))
+        {
+            checks.add(new JwtScanner());
         }
 
         List<Finding> findings = new ArrayList<>();
@@ -918,6 +928,213 @@ public final class GraphQLHunterScanners
                 }
             }
             return findings;
+        }
+    }
+
+    public static final class XssScanner implements ScannerCheck
+    {
+        @Override
+        public String name()
+        {
+            return "xss";
+        }
+
+        @Override
+        public List<Finding> scan(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            Map<String, Object> schema = context.client().introspect();
+            if (schema == null || schema.isEmpty())
+            {
+                return findings;
+            }
+            findings.addAll(testFieldFamily(context, schema, "mutation", GraphQLHunterCore.getRootFields(schema, "mutationType")));
+            if (findings.size() < 2)
+            {
+                findings.addAll(testFieldFamily(context, schema, "query", GraphQLHunterCore.getRootFields(schema, "queryType")));
+            }
+            return findings;
+        }
+
+        private List<Finding> testFieldFamily(ScanContext context, Map<String, Object> schema, String operationKind, List<Map<String, Object>> fields)
+        {
+            List<Finding> findings = new ArrayList<>();
+            int testsRun = 0;
+            for (Map<String, Object> field : fields)
+            {
+                if (testsRun >= context.configuration().maxXssTests)
+                {
+                    break;
+                }
+                List<Map<String, Object>> args = GraphQLHunterCore.asList(field.get("args"));
+                if (args.isEmpty())
+                {
+                    continue;
+                }
+                Operation baseline = GraphQLHunterCore.buildOperation(schema, field, operationKind, Map.of());
+                if (!baseline.testable)
+                {
+                    continue;
+                }
+                GraphQLResponse baselineResponse = context.client().query(baseline.query, baseline.variables, baseline.operationName);
+                if (!baselineResponse.errorsText().toLowerCase(Locale.ROOT).contains("validation"))
+                {
+                    for (Map<String, Object> arg : args)
+                    {
+                        if (!"String".equals(GraphQLHunterCore.extractTypeName(GraphQLHunterCore.asMap(arg.get("type")))))
+                        {
+                            continue;
+                        }
+                        for (String payload : context.payloads().xssPayloads)
+                        {
+                            Operation probe = GraphQLHunterCore.buildOperation(schema, field, operationKind, Map.of(String.valueOf(arg.get("name")), payload));
+                            if (!probe.testable)
+                            {
+                                continue;
+                            }
+                            GraphQLResponse response = context.client().query(probe.query, probe.variables, probe.operationName);
+                            testsRun++;
+                            String serialized = String.valueOf(response.json);
+                            String escapedPayload = payload.replace("<", "\\u003c").replace(">", "\\u003e");
+                            if (response.hasData() && (serialized.contains(payload) || serialized.contains(escapedPayload)))
+                            {
+                                Finding finding = finding(
+                                    "Potential XSS Review Required",
+                                    name(),
+                                    FindingSeverity.MEDIUM,
+                                    FindingStatus.MANUAL_REVIEW,
+                                    "An XSS payload was reflected in successful GraphQL response data.",
+                                    "If downstream clients render this value unsafely, reflected or stored XSS may be possible.",
+                                    "Review output encoding and sink handling in applications that render this field's value."
+                                );
+                                finding.evidence.put("operation_kind", operationKind);
+                                finding.evidence.put("field", field.get("name"));
+                                finding.evidence.put("argument", arg.get("name"));
+                                finding.evidence.put("payload", payload);
+                                finding.proof = probe.query;
+                                finding.requestSnippet = probe.query;
+                                findings.add(finding);
+                                return findings;
+                            }
+                            if (testsRun >= context.configuration().maxXssTests)
+                            {
+                                return findings;
+                            }
+                        }
+                    }
+                }
+            }
+            return findings;
+        }
+    }
+
+    public static final class JwtScanner implements ScannerCheck
+    {
+        private static final Pattern JWT_HEADER = Pattern.compile("^Bearer\\s+([A-Za-z0-9-_]+)\\.([A-Za-z0-9-_]+)\\.([A-Za-z0-9-_]+)$");
+        private static final Pattern JWT_RAW = Pattern.compile("^([A-Za-z0-9-_]+)\\.([A-Za-z0-9-_]+)\\.([A-Za-z0-9-_]+)$");
+
+        @Override
+        public String name()
+        {
+            return "jwt";
+        }
+
+        @Override
+        public List<Finding> scan(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            String token = null;
+            String headerName = null;
+            for (Map.Entry<String, String> entry : context.request().headers.entrySet())
+            {
+                if ("Authorization".equalsIgnoreCase(entry.getKey()) && JWT_HEADER.matcher(entry.getValue()).matches())
+                {
+                    token = entry.getValue().substring("Bearer ".length()).trim();
+                    headerName = "Authorization";
+                    break;
+                }
+                if ("Token".equalsIgnoreCase(entry.getKey()) && JWT_RAW.matcher(entry.getValue()).matches())
+                {
+                    token = entry.getValue().trim();
+                    headerName = "Token";
+                    break;
+                }
+            }
+            if (token == null)
+            {
+                return findings;
+            }
+
+            Finding detected = finding(
+                "JWT Token Authentication Detected",
+                name(),
+                FindingSeverity.INFO,
+                FindingStatus.CONFIRMED,
+                "The imported request uses a JWT-shaped token for authentication.",
+                "JWT-based auth requires strict signature, expiry, issuer, and audience validation.",
+                "Ensure JWTs are validated on every request and reject insecure or expired tokens."
+            );
+            detected.evidence.put("header", headerName);
+            findings.add(detected);
+
+            try
+            {
+                String[] parts = token.split("\\.");
+                String payloadJson = new String(Base64.getUrlDecoder().decode(pad(parts[1])), StandardCharsets.UTF_8);
+                @SuppressWarnings("unchecked")
+                Map<String, Object> payload = GraphQLHunterJson.readMap(payloadJson);
+                Object exp = payload.get("exp");
+                Object iat = payload.get("iat");
+                if (exp != null)
+                {
+                    long current = java.time.Instant.now().getEpochSecond();
+                    long expires = Long.parseLong(String.valueOf(exp));
+                    if (expires < current)
+                    {
+                        Finding finding = finding(
+                            "Expired JWT Token Detected",
+                            name(),
+                            FindingSeverity.MEDIUM,
+                            FindingStatus.CONFIRMED,
+                            "The imported JWT token appears to be expired based on its exp claim.",
+                            "If the server still accepts expired tokens, stale credentials can be replayed indefinitely.",
+                            "Ensure the server validates JWT expiration on every request."
+                        );
+                        finding.evidence.put("exp", expires);
+                        finding.evidence.put("current", current);
+                        findings.add(finding);
+                    }
+                    else if (iat != null)
+                    {
+                        long lifetime = expires - Long.parseLong(String.valueOf(iat));
+                        if (lifetime > 24 * 3600)
+                        {
+                            Finding finding = finding(
+                                "Long-Lived JWT Token",
+                                name(),
+                                FindingSeverity.LOW,
+                                FindingStatus.POTENTIAL,
+                                "The JWT appears to have a long access-token lifetime based on iat/exp claims.",
+                                "Long-lived tokens increase the impact window if a token is compromised.",
+                                "Prefer shorter-lived access tokens and refresh-token rotation."
+                            );
+                            finding.evidence.put("lifetime_seconds", lifetime);
+                            findings.add(finding);
+                        }
+                    }
+                }
+            }
+            catch (Exception ignored)
+            {
+                // Detection finding above still stands.
+            }
+            return findings;
+        }
+
+        private String pad(String value)
+        {
+            int padding = (4 - value.length() % 4) % 4;
+            return value + "=".repeat(padding);
         }
     }
 }
