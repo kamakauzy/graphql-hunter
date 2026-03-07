@@ -27,6 +27,17 @@ class TestWizard(unittest.TestCase):
         self.assertIn("python graphql-hunter.py -u", out)
         self.assertIn("--auth-profile bearer", out)
         self.assertIn("GQLH_ACCESS_TOKEN", out)
+        self.assertIn("export GQLH_ACCESS_TOKEN=", out)
+
+    def test_run_wizard_repompts_for_blank_url(self):
+        inputs = iter(["", "https://example.com/graphql", ""])
+        buf = io.StringIO()
+        with patch("builtins.input", side_effect=lambda *a, **k: next(inputs)), patch("sys.stdout", buf):
+            rc = run_auth_wizard(args=type("A", (), {"url": None})(), reporter=None)
+
+        self.assertEqual(rc, 0)
+        out = buf.getvalue()
+        self.assertIn('python graphql-hunter.py -u "https://example.com/graphql"', out)
 
 
 if __name__ == "__main__":

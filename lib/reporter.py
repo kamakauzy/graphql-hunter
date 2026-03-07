@@ -87,6 +87,10 @@ class Reporter:
         """Print debug message (only in verbose mode)"""
         if self.verbose:
             print(self._colorize(f"[DEBUG] {message}", 'DEBUG'))
+
+    def print_plain(self, message: str = ""):
+        """Print raw text without prefixes or verbosity gating."""
+        print(message)
     
     def print_finding(self, finding: Dict):
         """
@@ -123,11 +127,12 @@ class Reporter:
         # Print evidence (in verbose mode)
         if evidence and self.verbose:
             print(f"  {self._colorize('Evidence:', 'DEBUG')}")
-            if 'query' in evidence:
-                print(f"    Query: {evidence['query'][:200]}...")
-            if 'response' in evidence:
-                resp_str = json.dumps(evidence['response'], indent=6)[:300]
-                print(f"    Response: {resp_str}...")
+            for key, value in evidence.items():
+                if isinstance(value, (dict, list)):
+                    rendered = json.dumps(value, indent=6)[:500]
+                else:
+                    rendered = str(value)[:500]
+                print(f"    {key}: {rendered}")
         
         # Print PoC
         if poc:

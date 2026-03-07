@@ -5,6 +5,7 @@ Request Importer - Import requests from various formats (Postman, cURL, JSON, YA
 
 import json
 import re
+import shlex
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -13,6 +14,113 @@ from urllib.parse import urlparse
 
 class RequestImporter:
     """Import GraphQL requests from various formats"""
+
+    @staticmethod
+    def _extract_operation_name(query: Optional[str]) -> Optional[str]:
+        """Extract operation name from query if present."""
+        if not query or not isinstance(query, str):
+            return None
+
+        op_match = re.search(r'(?:query|mutation|subscription)\s+(\w+)', query)
+        if op_match:
+            return op_match.group(1)
+        return None
+
+    @staticmethod
+    def _normalize_variables(variables: Any) -> Any:
+        """Normalize variables to a dict when possible."""
+        if variables is None:
+            return None
+        if isinstance(variables, dict):
+            return variables
+        if isinstance(variables, str):
+            stripped = variables.strip()
+            if not stripped:
+                return None
+            try:
+                parsed = json.loads(stripped)
+                return parsed
+            except Exception:
+                return variables
+        return variables
+
+    @staticmethod
+    def _extract_postman_requests(collection: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract requests from a Postman collection dictionary."""
+        requests = []
+
+        def extract_requests(item: Dict, folder_path: str = ""):
+            """Recursively extract requests from collection items."""
+            if item.get('request'):
+                req = item['request']
+                url_obj = req.get('url', {})
+
+                # Build URL
+                if isinstance(url_obj, str):
+                    url = url_obj
+                else:
+                    protocol = url_obj.get('protocol', 'https')
+                    host = url_obj.get('host', [])
+                    path = url_obj.get('path', [])
+
+                    if isinstance(host, list):
+                        host = '.'.join(host)
+                    if isinstance(path, list):
+                        path = '/'.join(path)
+
+                    url = f"{protocol}://{host}/{path}".replace('//', '/').replace(':/', '://')
+
+                # Extract headers
+                headers = {}
+                for header in req.get('header', []):
+                    if not header.get('disabled', False):
+                        headers[header.get('key', '')] = header.get('value', '')
+
+                # Extract body
+                body = req.get('body', {})
+                variables = None
+                query = None
+
+                if body.get('mode') == 'raw':
+                    body_text = body.get('raw', '')
+                    try:
+                        body_json = json.loads(body_text)
+                        query = body_json.get('query', '')
+                        variables = RequestImporter._normalize_variables(body_json.get('variables'))
+                    except Exception:
+                        query = body_text
+                elif body.get('mode') == 'graphql':
+                    graphql = body.get('graphql', {})
+                    query = graphql.get('query', '')
+                    variables = RequestImporter._normalize_variables(graphql.get('variables'))
+
+                request_data = {
+                    'name': item.get('name', 'Unnamed Request'),
+                    'url': url,
+                    'method': req.get('method', 'POST'),
+                    'headers': headers,
+                    'query': query,
+                    'variables': variables,
+                    'operation_name': RequestImporter._extract_operation_name(query),
+                    'folder': folder_path
+                }
+
+                requests.append(request_data)
+
+            # Recursively process items
+            if 'item' in item:
+                current_folder = folder_path
+                if item.get('name'):
+                    current_folder = f"{folder_path}/{item['name']}" if folder_path else item['name']
+
+                for sub_item in item['item']:
+                    extract_requests(sub_item, current_folder)
+
+        if 'item' in collection:
+            for item in collection['item']:
+                extract_requests(item)
+
+        return requests
     
     @staticmethod
     def from_postman_collection(file_path: str) -> List[Dict[str, Any]]:
@@ -27,90 +135,14 @@ class RequestImporter:
         """
         with open(file_path, 'r', encoding='utf-8') as f:
             collection = json.load(f)
-        
-        requests = []
-        
-        def extract_requests(item: Dict, folder_path: str = ""):
-            """Recursively extract requests from collection items"""
-            if item.get('request'):
-                req = item['request']
-                url_obj = req.get('url', {})
-                
-                # Build URL
-                if isinstance(url_obj, str):
-                    url = url_obj
-                else:
-                    protocol = url_obj.get('protocol', 'https')
-                    host = url_obj.get('host', [])
-                    path = url_obj.get('path', [])
-                    
-                    if isinstance(host, list):
-                        host = '.'.join(host)
-                    if isinstance(path, list):
-                        path = '/'.join(path)
-                    
-                    url = f"{protocol}://{host}/{path}".replace('//', '/').replace(':/', '://')
-                
-                # Extract headers
-                headers = {}
-                for header in req.get('header', []):
-                    if not header.get('disabled', False):
-                        headers[header.get('key', '')] = header.get('value', '')
-                
-                # Extract body
-                body = req.get('body', {})
-                body_text = ""
-                variables = None
-                query = None
-                
-                if body.get('mode') == 'raw':
-                    body_text = body.get('raw', '')
-                    # Try to parse as JSON
-                    try:
-                        body_json = json.loads(body_text)
-                        query = body_json.get('query', '')
-                        variables = body_json.get('variables')
-                    except:
-                        query = body_text
-                elif body.get('mode') == 'graphql':
-                    query = body.get('graphql', {}).get('query', '')
-                    variables = body.get('graphql', {}).get('variables')
-                
-                # Extract operation name from query if present
-                operation_name = None
-                if query:
-                    op_match = re.search(r'(?:query|mutation|subscription)\s+(\w+)', query)
-                    if op_match:
-                        operation_name = op_match.group(1)
-                
-                request_data = {
-                    'name': item.get('name', 'Unnamed Request'),
-                    'url': url,
-                    'method': req.get('method', 'POST'),
-                    'headers': headers,
-                    'query': query,
-                    'variables': variables,
-                    'operation_name': operation_name,
-                    'folder': folder_path
-                }
-                
-                requests.append(request_data)
-            
-            # Recursively process items
-            if 'item' in item:
-                current_folder = folder_path
-                if item.get('name'):
-                    current_folder = f"{folder_path}/{item['name']}" if folder_path else item['name']
-                
-                for sub_item in item['item']:
-                    extract_requests(sub_item, current_folder)
-        
-        # Process collection
-        if 'item' in collection:
-            for item in collection['item']:
-                extract_requests(item)
-        
-        return requests
+        return RequestImporter._extract_postman_requests(collection)
+
+    @staticmethod
+    def from_postman_collection_data(collection: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Import requests from an already-loaded Postman collection."""
+        if not isinstance(collection, dict):
+            raise ValueError("Postman collection data must be a dictionary")
+        return RequestImporter._extract_postman_requests(collection)
     
     @staticmethod
     def from_curl_command(curl_cmd: str) -> Dict[str, Any]:
@@ -123,48 +155,74 @@ class RequestImporter:
         Returns:
             Request dictionary with url, headers, body, etc.
         """
-        # Extract URL
-        url_match = re.search(r'curl\s+(?:-[^\s]+\s+)*["\']?([^"\'\s]+)["\']?', curl_cmd)
-        url = url_match.group(1) if url_match else ""
-        
-        # Extract headers
+        tokens = shlex.split(curl_cmd)
+        if tokens and tokens[0] == 'curl':
+            tokens = tokens[1:]
+
+        method = None
+        url = ""
         headers = {}
-        header_matches = re.findall(r'-H\s+["\']([^"\']+)["\']', curl_cmd)
-        for header in header_matches:
-            if ':' in header:
-                key, value = header.split(':', 1)
-                headers[key.strip()] = value.strip()
-        
-        # Extract data/body
-        data_match = re.search(r'--data(?:-raw)?\s+["\']([^"\']+)["\']', curl_cmd, re.DOTALL)
-        body_text = data_match.group(1) if data_match else ""
-        
+        body_text = ""
+
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+
+            if token in ('-X', '--request') and i + 1 < len(tokens):
+                method = tokens[i + 1].upper()
+                i += 2
+                continue
+
+            if token in ('-H', '--header') and i + 1 < len(tokens):
+                header = tokens[i + 1]
+                if ':' in header:
+                    key, value = header.split(':', 1)
+                    headers[key.strip()] = value.strip()
+                i += 2
+                continue
+
+            if token in ('-d', '--data', '--data-raw', '--data-binary', '--data-ascii') and i + 1 < len(tokens):
+                if body_text:
+                    body_text += tokens[i + 1]
+                else:
+                    body_text = tokens[i + 1]
+                i += 2
+                continue
+
+            if token == '--get':
+                method = 'GET'
+                i += 1
+                continue
+
+            if token.startswith('http://') or token.startswith('https://'):
+                url = token
+                i += 1
+                continue
+
+            i += 1
+
         query = None
         variables = None
-        
+
         if body_text:
             try:
                 body_json = json.loads(body_text)
                 query = body_json.get('query', '')
-                variables = body_json.get('variables')
-            except:
+                variables = RequestImporter._normalize_variables(body_json.get('variables'))
+            except Exception:
                 query = body_text
-        
-        # Extract operation name
-        operation_name = None
-        if query:
-            op_match = re.search(r'(?:query|mutation|subscription)\s+(\w+)', query)
-            if op_match:
-                operation_name = op_match.group(1)
-        
+
+        if not method:
+            method = 'POST' if body_text else 'GET'
+
         return {
             'name': 'Imported from cURL',
             'url': url,
-            'method': 'POST',
+            'method': method,
             'headers': headers,
             'query': query,
             'variables': variables,
-            'operation_name': operation_name
+            'operation_name': RequestImporter._extract_operation_name(query)
         }
     
     @staticmethod
@@ -189,6 +247,9 @@ class RequestImporter:
         """
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+
+        if not isinstance(data, dict):
+            raise ValueError("JSON request file must contain an object at the root")
         
         return {
             'name': data.get('name', 'Imported from JSON'),
@@ -196,7 +257,7 @@ class RequestImporter:
             'method': data.get('method', 'POST'),
             'headers': data.get('headers', {}),
             'query': data.get('query', ''),
-            'variables': data.get('variables'),
+            'variables': RequestImporter._normalize_variables(data.get('variables')),
             'operation_name': data.get('operation_name')
         }
     
@@ -222,6 +283,9 @@ class RequestImporter:
         """
         with open(file_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
+
+        if not isinstance(data, dict):
+            raise ValueError("YAML request file must contain an object at the root")
         
         return {
             'name': data.get('name', 'Imported from YAML'),
@@ -229,7 +293,7 @@ class RequestImporter:
             'method': data.get('method', 'POST'),
             'headers': data.get('headers', {}),
             'query': data.get('query', ''),
-            'variables': data.get('variables'),
+            'variables': RequestImporter._normalize_variables(data.get('variables')),
             'operation_name': data.get('operation_name')
         }
     
@@ -244,7 +308,8 @@ class RequestImporter:
         Returns:
             Request dictionary
         """
-        lines = raw_request.strip().split('\n')
+        normalized = raw_request.replace('\r\n', '\n').replace('\r', '\n').strip()
+        lines = normalized.split('\n')
         
         # Parse request line
         request_line = lines[0]
@@ -291,16 +356,9 @@ class RequestImporter:
             try:
                 body_json = json.loads(body_text)
                 query = body_json.get('query', '')
-                variables = body_json.get('variables')
-            except:
+                variables = RequestImporter._normalize_variables(body_json.get('variables'))
+            except Exception:
                 query = body_text
-        
-        # Extract operation name
-        operation_name = None
-        if query:
-            op_match = re.search(r'(?:query|mutation|subscription)\s+(\w+)', query)
-            if op_match:
-                operation_name = op_match.group(1)
         
         return {
             'name': 'Imported from raw HTTP',
@@ -309,7 +367,7 @@ class RequestImporter:
             'headers': headers,
             'query': query,
             'variables': variables,
-            'operation_name': operation_name
+            'operation_name': RequestImporter._extract_operation_name(query)
         }
     
     @staticmethod
@@ -342,6 +400,20 @@ class RequestImporter:
         
         elif suffix in ['.yaml', '.yml']:
             return RequestImporter.from_yaml(file_path)
+        elif suffix in ['.txt', '.http', '.req', '.curl']:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            if content.startswith('curl '):
+                return RequestImporter.from_curl_command(content)
+            if re.match(r'^[A-Z]+\s+\S+\s+HTTP/\d\.\d$', content.splitlines()[0]):
+                return RequestImporter.from_raw_http(content)
+            raise ValueError(f"Unsupported text request format in file: {file_path}")
         
         else:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            if content.startswith('curl '):
+                return RequestImporter.from_curl_command(content)
+            if content and re.match(r'^[A-Z]+\s+\S+\s+HTTP/\d\.\d$', content.splitlines()[0]):
+                return RequestImporter.from_raw_http(content)
             raise ValueError(f"Unsupported file format: {suffix}")

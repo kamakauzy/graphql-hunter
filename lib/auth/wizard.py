@@ -10,6 +10,7 @@ Design goals:
 from __future__ import annotations
 
 import os
+import platform
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
@@ -44,6 +45,15 @@ def _ps_env_set_lines(kv: Dict[str, str]) -> str:
     return "\n".join(lines)
 
 
+def _bash_env_set_lines(kv: Dict[str, str]) -> str:
+    """Print safe bash/zsh export lines with placeholders."""
+    lines = []
+    for k, v in kv.items():
+        escaped = str(v).replace("'", "'\"'\"'")
+        lines.append(f"export {k}='{escaped}'")
+    return "\n".join(lines)
+
+
 @dataclass
 class WizardResult:
     url: str
@@ -62,7 +72,7 @@ def run_auth_wizard(args, reporter=None) -> int:
         reporter.print_info("Auth Wizard: this will print a runnable command without exposing secrets.")
 
     url = getattr(args, "url", None) or ""
-    if not url:
+    while not url:
         url = _prompt("GraphQL URL (e.g., https://api.example.com/graphql)")
 
     auth_type = _choose(
@@ -84,9 +94,14 @@ def run_auth_wizard(args, reporter=None) -> int:
     # Print how to set env vars (PowerShell-friendly)
     if reporter and hasattr(reporter, "print_separator"):
         reporter.print_separator()
-    print("### Set environment variables (PowerShell)")
+    is_windows = os.name == "nt" or platform.system().lower().startswith("win")
+    shell_label = "PowerShell" if is_windows else "bash/zsh"
+    print(f"### Set environment variables ({shell_label})")
     if res.env_vars:
-        print(_ps_env_set_lines(res.env_vars))
+        if is_windows:
+            print(_ps_env_set_lines(res.env_vars))
+        else:
+            print(_bash_env_set_lines(res.env_vars))
     else:
         print("# (none)")
 

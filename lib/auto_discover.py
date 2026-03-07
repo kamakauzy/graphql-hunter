@@ -5,6 +5,7 @@ Auto-Discovery - Automatically figure out authentication and configuration from 
 
 import json
 import re
+import shlex
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
@@ -15,7 +16,10 @@ class AutoDiscover:
     """Automatically discover authentication and configuration from various sources"""
     
     def __init__(self):
-        self.discovered = {
+        self.discovered = self._empty_discovery()
+
+    def _empty_discovery(self) -> Dict[str, Any]:
+        return {
             'url': None,
             'auth_method': None,
             'credentials': {},
@@ -93,16 +97,15 @@ class AutoDiscover:
             self.discovered['tokens']['refresh_token'] = refresh_match.group(1)
         
         # Extract UIDs
-        uid_patterns = [
-            r'(?:pdt[_\s]?uid|pdtUid)[:\s]+([A-Za-z0-9]+)',
-            r'(?:patient[_\s]?uid|patientUid)[:\s]+([A-Za-z0-9]+)',
-            r'(?:careteams[_\s]?uid|careteamsUid)[:\s]+([A-Za-z0-9]+)',
-        ]
-        for pattern in uid_patterns:
+        uid_patterns = {
+            'pdt_uid': r'(?:pdt[_\s]?uid|pdtUid)[:\s]+([A-Za-z0-9]+)',
+            'patient_uid': r'(?:patient[_\s]?uid|patientUid)[:\s]+([A-Za-z0-9]+)',
+            'careteams_uid': r'(?:careteams[_\s]?uid|careteamsUid)[:\s]+([A-Za-z0-9]+)',
+        }
+        for key, pattern in uid_patterns.items():
             match = re.search(pattern, notes_text, re.IGNORECASE)
             if match:
-                key = pattern.split('(')[0].replace('(?:', '').replace('|', '_').split('_')[0]
-                self.discovered['credentials'][f'{key}_uid'] = match.group(1)
+                self.discovered['credentials'][key] = match.group(1)
         
         # Extract access codes
         access_code_pattern = r'(?:access[_\s]?code|accessCode)[:\s]+([^\s\n]+)'
@@ -113,16 +116,13 @@ class AutoDiscover:
         # Extract headers (Token:, Authorization:, etc.)
         # Look for header patterns in context
         header_patterns = [
-            r'(Token|Authorization|X-API-Key|apikey)[:\s]+([^\s\n]+)',
+            r'(Token|Authorization|X-API-Key|apikey)[:\s]+([^\n]+)',
         ]
         for pattern in header_patterns:
             matches = re.findall(pattern, notes_text, re.IGNORECASE)
             for header_name, header_value in matches:
-                # If it's a JWT token, use Token header
-                if header_value.startswith('eyJ') or 'apikey' in header_name.lower():
-                    self.discovered['headers']['Token'] = header_value
-                else:
-                    self.discovered['headers'][header_name] = header_value
+                normalized_header_name = 'X-API-Key' if header_name.lower() == 'apikey' else header_name
+                self.discovered['headers'][normalized_header_name] = header_value.strip()
         
         # Detect auth method
         if 'tokenAuth' in notes_text or 'token_auth' in notes_text.lower():
@@ -163,7 +163,7 @@ class AutoDiscover:
         """Analyze Postman collection"""
         from request_importer import RequestImporter
         
-        requests = RequestImporter.from_postman_collection(collection)
+        requests = RequestImporter.from_postman_collection_data(collection)
         
         # Extract common URLs
         urls = [r.get('url') for r in requests if r.get('url')]
@@ -202,7 +202,7 @@ class AutoDiscover:
         if 'headers' in data:
             self.discovered['headers'].update(data['headers'])
         
-        if 'query' in data:
+        if 'query' in data and isinstance(data.get('query'), str):
             if 'mutation' in data['query'].lower():
                 self.discovered['mutations'].append(data)
             else:
@@ -283,6 +283,8 @@ class AutoDiscover:
         Returns:
             Complete discovery results with recommendations
         """
+        self.discovered = self._empty_discovery()
+
         for source in sources:
             path = Path(source)
             
@@ -321,34 +323,37 @@ class AutoDiscover:
             'headers': []
         }
         
-        # Determine auth profile
+        discovered_headers = self.discovered.get('headers') or {}
+
+        # Determine auth profile / headers
         if self.discovered['auth_method'] == 'tokenAuth' or \
-           (self.discovered['credentials'].get('email') and 
+           (self.discovered['credentials'].get('email') and
             self.discovered['credentials'].get('password')):
             recs['auth_profile'] = 'token_auth'
             recs['auth_vars'] = [
                 f"email={self.discovered['credentials'].get('email')}",
                 f"password={self.discovered['credentials'].get('password')}"
             ]
+        elif discovered_headers:
+            recs['headers'] = [f"{key}: {value}" for key, value in discovered_headers.items()]
         elif self.discovered['tokens'].get('access_token'):
-            # Use token directly
             token = self.discovered['tokens']['access_token']
-            recs['headers'] = [f"Token: {token}"]
+            recs['headers'] = [f"Authorization: Bearer {token}"]
         
         # Build command
         if self.discovered['url']:
             cmd_parts = [
                 'python graphql-hunter.py',
-                f"-u {self.discovered['url']}"
+                f"-u {shlex.quote(self.discovered['url'])}"
             ]
             
             if recs['auth_profile']:
                 cmd_parts.append(f"--auth-profile {recs['auth_profile']}")
                 for var in recs['auth_vars']:
-                    cmd_parts.append(f"--auth-var {var}")
+                    cmd_parts.append(f"--auth-var {shlex.quote(var)}")
             elif recs['headers']:
                 for header in recs['headers']:
-                    cmd_parts.append(f'-H "{header}"')
+                    cmd_parts.append(f"-H {shlex.quote(header)}")
             
             cmd_parts.append('--validate-auth')
             recs['command'] = ' \\\n  '.join(cmd_parts)

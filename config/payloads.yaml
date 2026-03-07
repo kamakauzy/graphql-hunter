@@ -55,7 +55,14 @@ profiles:
     field_limit: 10
     enable_dos: false
     enable_deep_injection: false
+    enable_rate_limit_testing: false
+    enable_csrf_testing: true
+    enable_file_upload_testing: true
     batch_size: 5
+    brute_force_attempts: 10
+    rate_limit_concurrency: 25
+    rate_limit_requests: 50
+    max_xss_tests: 10
     timeout: 10
     description: "Fast scan with minimal tests"
   
@@ -64,7 +71,14 @@ profiles:
     field_limit: 20
     enable_dos: true
     enable_deep_injection: true
+    enable_rate_limit_testing: true
+    enable_csrf_testing: true
+    enable_file_upload_testing: true
     batch_size: 10
+    brute_force_attempts: 20
+    rate_limit_concurrency: 50
+    rate_limit_requests: 100
+    max_xss_tests: 20
     timeout: 30
     description: "Balanced scan with good coverage"
   
@@ -73,7 +87,14 @@ profiles:
     field_limit: 50
     enable_dos: true
     enable_deep_injection: true
+    enable_rate_limit_testing: true
+    enable_csrf_testing: true
+    enable_file_upload_testing: true
     batch_size: 20
+    brute_force_attempts: 30
+    rate_limit_concurrency: 75
+    rate_limit_requests: 150
+    max_xss_tests: 30
     timeout: 60
     description: "Thorough scan with extensive tests"
   
@@ -82,7 +103,14 @@ profiles:
     field_limit: 10
     enable_dos: false
     enable_deep_injection: false
+    enable_rate_limit_testing: false
+    enable_csrf_testing: true
+    enable_file_upload_testing: true
     batch_size: 3
+    brute_force_attempts: 5
+    rate_limit_concurrency: 10
+    rate_limit_requests: 20
+    max_xss_tests: 5
     timeout: 30
     delay: 1.0
     description: "Slow, stealthy scan to avoid detection"
