@@ -6,8 +6,10 @@ import graphqlhunter.GraphQLHunterCore.Operation;
 import graphqlhunter.GraphQLHunterModels.Finding;
 import graphqlhunter.GraphQLHunterModels.FindingSeverity;
 import graphqlhunter.GraphQLHunterModels.FindingStatus;
-import graphqlhunter.GraphQLHunterModels.ScanProfile;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
+import graphqlhunter.config.ConfigurationLoader;
+import graphqlhunter.config.PayloadConfiguration;
+import graphqlhunter.config.ScanConfiguration;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -40,10 +42,10 @@ public final class GraphQLHunterScanners
     {
     }
 
-    public static List<Finding> run(ScanRequest request, ScanProfile profile, GraphQLHunterLogger logger)
+    public static List<Finding> run(ScanRequest request, ScanConfiguration configuration, GraphQLHunterLogger logger)
     {
         GraphQLClient client = new GraphQLClient(request.url, request.headers, new GraphQLHunterCore.JavaHttpTransport(), logger);
-        ScanContext context = new ScanContext(request, profile, client, logger);
+        ScanContext context = new ScanContext(request, configuration, client, logger, ConfigurationLoader.payloads());
         List<ScannerCheck> checks = List.of(
             new IntrospectionScanner(),
             new InfoDisclosureScanner(),
@@ -77,7 +79,13 @@ public final class GraphQLHunterScanners
         List<Finding> scan(ScanContext context);
     }
 
-    public record ScanContext(ScanRequest request, ScanProfile profile, GraphQLClient client, GraphQLHunterLogger logger)
+    public record ScanContext(
+        ScanRequest request,
+        ScanConfiguration configuration,
+        GraphQLClient client,
+        GraphQLHunterLogger logger,
+        PayloadConfiguration payloads
+    )
     {
     }
 
@@ -338,10 +346,6 @@ public final class GraphQLHunterScanners
 
     public static final class InjectionLiteScanner implements ScannerCheck
     {
-        private final List<String> sqlPayloads = List.of("' OR '1'='1", "' UNION SELECT NULL--");
-        private final List<String> noSqlPayloads = List.of("{\"$gt\": \"\"}", "{\"$ne\": null}");
-        private final List<String> commandPayloads = List.of("; ls -la", "$(whoami)");
-
         @Override
         public String name()
         {
@@ -352,7 +356,7 @@ public final class GraphQLHunterScanners
         public List<Finding> scan(ScanContext context)
         {
             List<Finding> findings = new ArrayList<>();
-            if (context.profile() == ScanProfile.QUICK)
+            if ("QUICK".equalsIgnoreCase(context.configuration().profileName))
             {
                 return findings;
             }
@@ -405,15 +409,18 @@ public final class GraphQLHunterScanners
                     GraphQLResponse baselineResponse = context.client().query(baseline.query, baseline.variables, baseline.operationName);
                     String baselineErrors = baselineResponse.errorsText().toLowerCase(Locale.ROOT);
 
+                    List<String> sqlPayloads = new ArrayList<>();
+                    sqlPayloads.addAll(context.payloads().sqlInjection.basic);
+                    sqlPayloads.addAll(context.payloads().sqlInjection.unionBased);
                     if (emitPayloadFindings(context, findings, field, operationKind, schema, argName, sqlPayloads, baselineErrors, SQL_ERRORS, "Possible SQL Injection Behavior", FindingSeverity.HIGH))
                     {
                         break;
                     }
-                    if (emitPayloadFindings(context, findings, field, operationKind, schema, argName, noSqlPayloads, baselineErrors, NOSQL_ERRORS, "Possible NoSQL Injection Behavior", FindingSeverity.HIGH))
+                    if (emitPayloadFindings(context, findings, field, operationKind, schema, argName, context.payloads().nosqlInjection, baselineErrors, NOSQL_ERRORS, "Possible NoSQL Injection Behavior", FindingSeverity.HIGH))
                     {
                         break;
                     }
-                    if (emitPayloadFindings(context, findings, field, operationKind, schema, argName, commandPayloads, baselineErrors, COMMAND_ERRORS, "Possible Command Injection Behavior", FindingSeverity.HIGH))
+                    if (emitPayloadFindings(context, findings, field, operationKind, schema, argName, context.payloads().commandInjection, baselineErrors, COMMAND_ERRORS, "Possible Command Injection Behavior", FindingSeverity.HIGH))
                     {
                         break;
                     }

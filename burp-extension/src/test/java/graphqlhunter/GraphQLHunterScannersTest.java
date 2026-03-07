@@ -3,8 +3,9 @@ package graphqlhunter;
 import graphqlhunter.GraphQLHunterCore.GraphQLClient;
 import graphqlhunter.GraphQLHunterCore.GraphQLResponse;
 import graphqlhunter.GraphQLHunterModels.Finding;
-import graphqlhunter.GraphQLHunterModels.ScanProfile;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
+import graphqlhunter.GraphQLHunterModels.ScanSettings;
+import graphqlhunter.config.ConfigurationLoader;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -20,7 +21,13 @@ class GraphQLHunterScannersTest
     void introspectionScannerReportsEnabledSchema()
     {
         GraphQLClient client = new GraphQLClient("https://api.example.com/graphql", Map.of(), new FakeTransport(), null);
-        GraphQLHunterScanners.ScanContext context = new GraphQLHunterScanners.ScanContext(new ScanRequest(), ScanProfile.STANDARD, client, null);
+        GraphQLHunterScanners.ScanContext context = new GraphQLHunterScanners.ScanContext(
+            new ScanRequest(),
+            ConfigurationLoader.scanConfiguration(new ScanSettings()),
+            client,
+            null,
+            ConfigurationLoader.payloads()
+        );
 
         List<Finding> findings = new GraphQLHunterScanners.IntrospectionScanner().scan(context);
 
@@ -34,7 +41,13 @@ class GraphQLHunterScannersTest
         ScanRequest request = new ScanRequest();
         request.url = "https://api.example.com/graphql";
         GraphQLClient client = new GraphQLClient(request.url, Map.of(), new FakeTransport(), null);
-        GraphQLHunterScanners.ScanContext context = new GraphQLHunterScanners.ScanContext(request, ScanProfile.STANDARD, client, null);
+        GraphQLHunterScanners.ScanContext context = new GraphQLHunterScanners.ScanContext(
+            request,
+            ConfigurationLoader.scanConfiguration(new ScanSettings()),
+            client,
+            null,
+            ConfigurationLoader.payloads()
+        );
 
         List<Finding> findings = new GraphQLHunterScanners.InjectionLiteScanner().scan(context);
 

@@ -6,10 +6,11 @@ import burp.api.montoya.core.Registration;
 import graphqlhunter.GraphQLHunterLogger;
 import graphqlhunter.GraphQLHunterModels.ExtensionState;
 import graphqlhunter.GraphQLHunterModels.Finding;
-import graphqlhunter.GraphQLHunterModels.ScanProfile;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
+import graphqlhunter.GraphQLHunterModels.ScanSettings;
 import graphqlhunter.GraphQLHunterPersistence;
 import graphqlhunter.GraphQLHunterScanners;
+import graphqlhunter.config.ConfigurationLoader;
 import graphqlhunter.burp.GraphQLHunterContextMenuItemsProvider;
 import graphqlhunter.ui.GraphQLHunterTab;
 
@@ -55,6 +56,10 @@ public final class GraphQLHunterExtension implements BurpExtension
     private synchronized void importRequest(ScanRequest request)
     {
         state.lastRequest = request.copy();
+        if (state.scanSettings == null)
+        {
+            state.scanSettings = new ScanSettings();
+        }
         persistState();
         if (tab != null)
         {
@@ -84,6 +89,7 @@ public final class GraphQLHunterExtension implements BurpExtension
         ExtensionState snapshot = new ExtensionState();
         snapshot.lastRequest = state.lastRequest == null ? new ScanRequest() : state.lastRequest.copy();
         snapshot.scanProfile = state.scanProfile;
+        snapshot.scanSettings = state.scanSettings == null ? new ScanSettings() : state.scanSettings.copy();
         return snapshot;
     }
 
@@ -106,17 +112,18 @@ public final class GraphQLHunterExtension implements BurpExtension
         }
 
         @Override
-        public void runScan(ScanRequest request, ScanProfile profile, Consumer<List<Finding>> onSuccess, Consumer<Throwable> onError)
+        public void runScan(ScanRequest request, ScanSettings settings, Consumer<List<Finding>> onSuccess, Consumer<Throwable> onError)
         {
             executorService.submit(() ->
             {
                 try
                 {
-                    List<Finding> findings = GraphQLHunterScanners.run(request, profile, logger);
+                    List<Finding> findings = GraphQLHunterScanners.run(request, ConfigurationLoader.scanConfiguration(settings), logger);
                     synchronized (GraphQLHunterExtension.this)
                     {
                         state.lastRequest = request.copy();
-                        state.scanProfile = profile.name();
+                        state.scanSettings = settings.copy();
+                        state.scanProfile = settings.profileName;
                         persistState();
                     }
                     SwingUtilities.invokeLater(() -> onSuccess.accept(findings));

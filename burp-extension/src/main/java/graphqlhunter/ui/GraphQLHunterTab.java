@@ -6,9 +6,11 @@ import graphqlhunter.GraphQLHunterModels.ExtensionState;
 import graphqlhunter.GraphQLHunterModels.Finding;
 import graphqlhunter.GraphQLHunterModels.ScanProfile;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
+import graphqlhunter.GraphQLHunterModels.ScanSettings;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -41,7 +43,7 @@ public final class GraphQLHunterTab extends JPanel
 
         void saveState(ExtensionState state);
 
-        void runScan(ScanRequest request, ScanProfile profile, Consumer<List<Finding>> onSuccess, Consumer<Throwable> onError);
+        void runScan(ScanRequest request, ScanSettings settings, Consumer<List<Finding>> onSuccess, Consumer<Throwable> onError);
     }
 
     private final GraphQLHunterActions actions;
@@ -49,7 +51,9 @@ public final class GraphQLHunterTab extends JPanel
     private final JTextField sourceField = new JTextField();
     private final JTextField urlField = new JTextField();
     private final JTextField methodField = new JTextField();
+    private final JTextField delayField = new JTextField();
     private final JComboBox<ScanProfile> profileCombo = new JComboBox<>(ScanProfile.values());
+    private final JCheckBox safeModeCheck = new JCheckBox("Safe mode");
     private final JTextArea queryArea = new JTextArea();
     private final JTextArea variablesArea = new JTextArea();
     private final JTextArea headersArea = new JTextArea();
@@ -71,6 +75,7 @@ public final class GraphQLHunterTab extends JPanel
 
         sourceField.setEditable(false);
         methodField.setColumns(8);
+        delayField.setColumns(6);
         sourceField.setColumns(18);
         queryArea.setLineWrap(true);
         queryArea.setWrapStyleWord(true);
@@ -160,15 +165,26 @@ public final class GraphQLHunterTab extends JPanel
         gbc.weightx = 0;
         panel.add(new JLabel("Profile"), gbc);
         gbc.gridx = 5;
-        gbc.weightx = 0.2;
+        gbc.weightx = 0.15;
         panel.add(profileCombo, gbc);
+
+        gbc.gridx = 6;
+        gbc.weightx = 0;
+        panel.add(safeModeCheck, gbc);
+
+        gbc.gridx = 7;
+        panel.add(new JLabel("Delay"), gbc);
+
+        gbc.gridx = 8;
+        gbc.weightx = 0.1;
+        panel.add(delayField, gbc);
 
         gbc.gridx = 0;
         gbc.gridy = 1;
         gbc.weightx = 0;
         panel.add(new JLabel("URL"), gbc);
         gbc.gridx = 1;
-        gbc.gridwidth = 5;
+        gbc.gridwidth = 8;
         gbc.weightx = 1.0;
         panel.add(urlField, gbc);
         gbc.gridwidth = 1;
@@ -181,7 +197,7 @@ public final class GraphQLHunterTab extends JPanel
 
         gbc.gridx = 0;
         gbc.gridy = 2;
-        gbc.gridwidth = 6;
+        gbc.gridwidth = 9;
         gbc.weightx = 1.0;
         panel.add(buttonRow, gbc);
 
@@ -261,11 +277,19 @@ public final class GraphQLHunterTab extends JPanel
         }
         try
         {
-            profileCombo.setSelectedItem(ScanProfile.valueOf(state.scanProfile));
+            String profileName = state.scanSettings != null && state.scanSettings.profileName != null && !state.scanSettings.profileName.isBlank()
+                ? state.scanSettings.profileName
+                : state.scanProfile;
+            profileCombo.setSelectedItem(ScanProfile.valueOf(profileName));
         }
         catch (IllegalArgumentException ignored)
         {
             profileCombo.setSelectedItem(ScanProfile.STANDARD);
+        }
+        if (state.scanSettings != null)
+        {
+            safeModeCheck.setSelected(state.scanSettings.safeMode);
+            delayField.setText(state.scanSettings.delaySeconds == null ? "" : String.valueOf(state.scanSettings.delaySeconds));
         }
         statusLabel.setText("Ready.");
     }
@@ -274,7 +298,8 @@ public final class GraphQLHunterTab extends JPanel
     {
         ExtensionState state = new ExtensionState();
         state.lastRequest = buildRequestFromInputs();
-        state.scanProfile = ((ScanProfile) profileCombo.getSelectedItem()).name();
+        state.scanSettings = buildScanSettingsFromInputs();
+        state.scanProfile = state.scanSettings.profileName;
         actions.saveState(state);
         statusLabel.setText("Saved current request state.");
     }
@@ -288,14 +313,14 @@ public final class GraphQLHunterTab extends JPanel
             return;
         }
 
-        ScanProfile profile = (ScanProfile) profileCombo.getSelectedItem();
+        ScanSettings settings = buildScanSettingsFromInputs();
         saveState();
         statusLabel.setText("Running focused checks...");
         scanButton.setEnabled(false);
         detailsArea.setText("");
         findingTableModel.setRows(List.of());
 
-        actions.runScan(request, profile, findings ->
+        actions.runScan(request, settings, findings ->
         {
             findingTableModel.setRows(findings);
             statusLabel.setText("Completed " + findings.size() + " finding(s).");
@@ -322,6 +347,26 @@ public final class GraphQLHunterTab extends JPanel
         request.headers = parseHeaders(headersArea.getText());
         request.variables = parseVariables(variablesArea.getText());
         return request;
+    }
+
+    private ScanSettings buildScanSettingsFromInputs()
+    {
+        ScanSettings settings = new ScanSettings();
+        settings.profileName = ((ScanProfile) profileCombo.getSelectedItem()).name();
+        settings.safeMode = safeModeCheck.isSelected();
+        if (!delayField.getText().isBlank())
+        {
+            try
+            {
+                settings.delaySeconds = Double.parseDouble(delayField.getText().trim());
+            }
+            catch (NumberFormatException exception)
+            {
+                logger.warn("Delay must be numeric; using profile default.");
+                settings.delaySeconds = null;
+            }
+        }
+        return settings;
     }
 
     private Object parseVariables(String text)

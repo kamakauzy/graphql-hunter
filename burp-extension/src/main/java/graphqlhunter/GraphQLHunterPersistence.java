@@ -30,9 +30,19 @@ public final class GraphQLHunterPersistence
             {
                 state.lastRequest = new GraphQLHunterModels.ScanRequest();
             }
+            if (state.scanSettings == null)
+            {
+                state.scanSettings = new GraphQLHunterModels.ScanSettings();
+            }
+            if (state.scanSettings.profileName == null || state.scanSettings.profileName.isBlank())
+            {
+                state.scanSettings.profileName = state.scanProfile == null || state.scanProfile.isBlank()
+                    ? GraphQLHunterModels.ScanProfile.STANDARD.name()
+                    : state.scanProfile;
+            }
             if (state.scanProfile == null || state.scanProfile.isBlank())
             {
-                state.scanProfile = GraphQLHunterModels.ScanProfile.STANDARD.name();
+                state.scanProfile = state.scanSettings.profileName;
             }
             return state;
         }
@@ -45,6 +55,11 @@ public final class GraphQLHunterPersistence
 
     public void save(GraphQLHunterModels.ExtensionState state)
     {
+        if (state.scanSettings == null)
+        {
+            state.scanSettings = new GraphQLHunterModels.ScanSettings();
+        }
+        state.scanProfile = state.scanSettings.profileName;
         store.setString(STATE_KEY, GraphQLHunterJson.write(state));
     }
 }
