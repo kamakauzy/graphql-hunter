@@ -296,10 +296,12 @@ public final class GraphQLHunterTab extends JPanel
 
     private void saveState()
     {
+        ExtensionState current = actions.currentState();
         ExtensionState state = new ExtensionState();
         state.lastRequest = buildRequestFromInputs();
         state.scanSettings = buildScanSettingsFromInputs();
         state.scanProfile = state.scanSettings.profileName;
+        state.authSettings = current == null || current.authSettings == null ? new graphqlhunter.GraphQLHunterModels.AuthSettings() : current.authSettings.copy();
         actions.saveState(state);
         statusLabel.setText("Saved current request state.");
     }

@@ -6,6 +6,7 @@ import burp.api.montoya.core.Registration;
 import graphqlhunter.GraphQLHunterLogger;
 import graphqlhunter.GraphQLHunterModels.ExtensionState;
 import graphqlhunter.GraphQLHunterModels.Finding;
+import graphqlhunter.GraphQLHunterModels.AuthSettings;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
 import graphqlhunter.GraphQLHunterModels.ScanSettings;
 import graphqlhunter.GraphQLHunterPersistence;
@@ -16,7 +17,10 @@ import graphqlhunter.ui.GraphQLHunterTab;
 
 import javax.swing.SwingUtilities;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -60,12 +64,47 @@ public final class GraphQLHunterExtension implements BurpExtension
         {
             state.scanSettings = new ScanSettings();
         }
+        if (state.authSettings == null)
+        {
+            state.authSettings = new AuthSettings();
+        }
+        state.authSettings.importedAuthHeaders = extractImportedAuthHeaders(request.headers);
+        if (!state.authSettings.importedAuthHeaders.isEmpty() && (state.authSettings.mode == null || "none".equalsIgnoreCase(state.authSettings.mode)))
+        {
+            state.authSettings.mode = "imported_headers";
+        }
         persistState();
         if (tab != null)
         {
             tab.importRequest(request);
         }
         logger.info("Imported GraphQL request into the GraphQL Hunter tab.");
+    }
+
+    private Map<String, String> extractImportedAuthHeaders(Map<String, String> headers)
+    {
+        LinkedHashMap<String, String> authHeaders = new LinkedHashMap<>();
+        if (headers == null)
+        {
+            return authHeaders;
+        }
+        headers.forEach((key, value) ->
+        {
+            if (key == null)
+            {
+                return;
+            }
+            String lowered = key.toLowerCase(Locale.ROOT);
+            if (lowered.equals("authorization")
+                || lowered.equals("cookie")
+                || lowered.equals("token")
+                || lowered.equals("x-api-key")
+                || lowered.equals("x-auth-token"))
+            {
+                authHeaders.put(key, value);
+            }
+        });
+        return authHeaders;
     }
 
     private synchronized void persistState()
@@ -90,6 +129,7 @@ public final class GraphQLHunterExtension implements BurpExtension
         snapshot.lastRequest = state.lastRequest == null ? new ScanRequest() : state.lastRequest.copy();
         snapshot.scanProfile = state.scanProfile;
         snapshot.scanSettings = state.scanSettings == null ? new ScanSettings() : state.scanSettings.copy();
+        snapshot.authSettings = state.authSettings == null ? new AuthSettings() : state.authSettings.copy();
         return snapshot;
     }
 
@@ -118,7 +158,12 @@ public final class GraphQLHunterExtension implements BurpExtension
             {
                 try
                 {
-                    List<Finding> findings = GraphQLHunterScanners.run(request, ConfigurationLoader.scanConfiguration(settings), logger);
+                    List<Finding> findings = GraphQLHunterScanners.run(
+                        request,
+                        ConfigurationLoader.scanConfiguration(settings),
+                        state.authSettings,
+                        logger
+                    );
                     synchronized (GraphQLHunterExtension.this)
                     {
                         state.lastRequest = request.copy();

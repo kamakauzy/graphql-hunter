@@ -122,6 +122,7 @@ public final class GraphQLHunterModels
         public ScanRequest lastRequest = new ScanRequest();
         public String scanProfile = ScanProfile.STANDARD.name();
         public ScanSettings scanSettings = new ScanSettings();
+        public AuthSettings authSettings = new AuthSettings();
     }
 
     public static final class ScanSettings
@@ -144,6 +145,30 @@ public final class GraphQLHunterModels
             copy.rateLimitConcurrency = rateLimitConcurrency;
             copy.rateLimitRequests = rateLimitRequests;
             copy.scannerEnabled = new LinkedHashMap<>(scannerEnabled);
+            return copy;
+        }
+    }
+
+    public static final class AuthSettings
+    {
+        public String mode = "none";
+        public String profileName = "";
+        public boolean detectFailures = true;
+        public Map<String, String> authVars = new LinkedHashMap<>();
+        public Map<String, String> staticHeaders = new LinkedHashMap<>();
+        public Map<String, String> importedAuthHeaders = new LinkedHashMap<>();
+        public Map<String, String> runtimeOnlySecrets = new LinkedHashMap<>();
+
+        public AuthSettings copy()
+        {
+            AuthSettings copy = new AuthSettings();
+            copy.mode = mode;
+            copy.profileName = profileName;
+            copy.detectFailures = detectFailures;
+            copy.authVars = new LinkedHashMap<>(authVars);
+            copy.staticHeaders = new LinkedHashMap<>(staticHeaders);
+            copy.importedAuthHeaders = new LinkedHashMap<>(importedAuthHeaders);
+            copy.runtimeOnlySecrets = new LinkedHashMap<>(runtimeOnlySecrets);
             return copy;
         }
     }
