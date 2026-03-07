@@ -1,6 +1,7 @@
 package graphqlhunter;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import graphqlhunter.auth.AuthManager;
 
 import java.io.IOException;
 import java.net.URI;
@@ -214,14 +215,21 @@ public final class GraphQLHunterCore
         private final Map<String, String> headers;
         private final GraphQLTransport transport;
         private final GraphQLHunterLogger logger;
+        private final AuthManager authManager;
         private Map<String, Object> cachedSchema;
 
         public GraphQLClient(String url, Map<String, String> headers, GraphQLTransport transport, GraphQLHunterLogger logger)
+        {
+            this(url, headers, transport, logger, null);
+        }
+
+        public GraphQLClient(String url, Map<String, String> headers, GraphQLTransport transport, GraphQLHunterLogger logger, AuthManager authManager)
         {
             this.url = Objects.requireNonNull(url, "url");
             this.headers = new LinkedHashMap<>(headers);
             this.transport = transport;
             this.logger = logger;
+            this.authManager = authManager;
         }
 
         public GraphQLClient withoutAuth()
@@ -234,7 +242,7 @@ public final class GraphQLHunterCore
                     cloned.put(key, value);
                 }
             });
-            return new GraphQLClient(url, cloned, transport, logger);
+            return new GraphQLClient(url, cloned, transport, logger, null);
         }
 
         public GraphQLResponse query(String query, Object variables, String operationName)
@@ -251,7 +259,16 @@ public final class GraphQLHunterCore
             }
             try
             {
-                return transport.postJson(url, headers, payload);
+                if (authManager != null)
+                {
+                    authManager.ensurePrepared(this);
+                }
+                GraphQLResponse response = transport.postJson(url, mergedHeaders(), payload);
+                if (authManager != null && authManager.maybeRefreshAndRetry(this, response))
+                {
+                    response = transport.postJson(url, mergedHeaders(), payload);
+                }
+                return response;
             }
             catch (Exception exception)
             {
@@ -270,7 +287,16 @@ public final class GraphQLHunterCore
         {
             try
             {
-                return transport.postJson(url, headers, payload);
+                if (authManager != null)
+                {
+                    authManager.ensurePrepared(this);
+                }
+                GraphQLResponse response = transport.postJson(url, mergedHeaders(), payload);
+                if (authManager != null && authManager.maybeRefreshAndRetry(this, response))
+                {
+                    response = transport.postJson(url, mergedHeaders(), payload);
+                }
+                return response;
             }
             catch (Exception exception)
             {
@@ -313,6 +339,16 @@ public final class GraphQLHunterCore
         public Map<String, String> headers()
         {
             return new LinkedHashMap<>(headers);
+        }
+
+        private Map<String, String> mergedHeaders()
+        {
+            LinkedHashMap<String, String> merged = new LinkedHashMap<>(headers);
+            if (authManager != null)
+            {
+                merged.putAll(authManager.requestHeaders());
+            }
+            return merged;
         }
     }
 

@@ -4,9 +4,11 @@ import graphqlhunter.GraphQLHunterCore.GraphQLClient;
 import graphqlhunter.GraphQLHunterCore.GraphQLResponse;
 import graphqlhunter.GraphQLHunterCore.Operation;
 import graphqlhunter.GraphQLHunterModels.Finding;
+import graphqlhunter.GraphQLHunterModels.AuthSettings;
 import graphqlhunter.GraphQLHunterModels.FindingSeverity;
 import graphqlhunter.GraphQLHunterModels.FindingStatus;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
+import graphqlhunter.auth.AuthManager;
 import graphqlhunter.config.ConfigurationLoader;
 import graphqlhunter.config.PayloadConfiguration;
 import graphqlhunter.config.ScanConfiguration;
@@ -42,9 +44,10 @@ public final class GraphQLHunterScanners
     {
     }
 
-    public static List<Finding> run(ScanRequest request, ScanConfiguration configuration, GraphQLHunterLogger logger)
+    public static List<Finding> run(ScanRequest request, ScanConfiguration configuration, AuthSettings authSettings, GraphQLHunterLogger logger)
     {
-        GraphQLClient client = new GraphQLClient(request.url, request.headers, new GraphQLHunterCore.JavaHttpTransport(), logger);
+        AuthManager authManager = AuthManager.fromState(authSettings, logger);
+        GraphQLClient client = new GraphQLClient(request.url, request.headers, new GraphQLHunterCore.JavaHttpTransport(), logger, authManager);
         ScanContext context = new ScanContext(request, configuration, client, logger, ConfigurationLoader.payloads());
         List<ScannerCheck> checks = List.of(
             new IntrospectionScanner(),
