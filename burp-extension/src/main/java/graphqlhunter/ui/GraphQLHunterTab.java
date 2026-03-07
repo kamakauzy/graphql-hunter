@@ -4,9 +4,11 @@ import graphqlhunter.GraphQLHunterJson;
 import graphqlhunter.GraphQLHunterLogger;
 import graphqlhunter.GraphQLHunterModels.ExtensionState;
 import graphqlhunter.GraphQLHunterModels.Finding;
+import graphqlhunter.GraphQLHunterModels.AuthSettings;
 import graphqlhunter.GraphQLHunterModels.ScanProfile;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
 import graphqlhunter.GraphQLHunterModels.ScanSettings;
+import graphqlhunter.auth.config.AuthConfigurationLoader;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -17,6 +19,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTable;
+import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
@@ -54,9 +57,15 @@ public final class GraphQLHunterTab extends JPanel
     private final JTextField delayField = new JTextField();
     private final JComboBox<ScanProfile> profileCombo = new JComboBox<>(ScanProfile.values());
     private final JCheckBox safeModeCheck = new JCheckBox("Safe mode");
+    private final JComboBox<String> authModeCombo = new JComboBox<>(new String[]{"none", "imported_headers", "static_headers", "profile"});
+    private final JComboBox<String> authProfileCombo = new JComboBox<>();
+    private final JCheckBox authDetectFailuresCheck = new JCheckBox("Detect auth failures / retry once");
     private final JTextArea queryArea = new JTextArea();
     private final JTextArea variablesArea = new JTextArea();
     private final JTextArea headersArea = new JTextArea();
+    private final JTextArea authVarsArea = new JTextArea();
+    private final JTextArea authStaticHeadersArea = new JTextArea();
+    private final JTextArea authImportedHeadersArea = new JTextArea();
     private final JTextArea detailsArea = new JTextArea();
     private final JTextArea logArea = new JTextArea();
     private final JLabel statusLabel = new JLabel("Ready.");
@@ -84,11 +93,20 @@ public final class GraphQLHunterTab extends JPanel
         headersArea.setLineWrap(true);
         headersArea.setWrapStyleWord(true);
         detailsArea.setEditable(false);
+        authImportedHeadersArea.setEditable(false);
         detailsArea.setLineWrap(true);
         detailsArea.setWrapStyleWord(true);
         logArea.setEditable(false);
         logArea.setLineWrap(true);
         logArea.setWrapStyleWord(true);
+        authVarsArea.setLineWrap(true);
+        authVarsArea.setWrapStyleWord(true);
+        authStaticHeadersArea.setLineWrap(true);
+        authStaticHeadersArea.setWrapStyleWord(true);
+        authImportedHeadersArea.setLineWrap(true);
+        authImportedHeadersArea.setWrapStyleWord(true);
+
+        AuthConfigurationLoader.configuration().profiles.keySet().forEach(authProfileCombo::addItem);
 
         logger.addListener(line -> SwingUtilities.invokeLater(() ->
         {
@@ -213,7 +231,15 @@ public final class GraphQLHunterTab extends JPanel
         return outerSplit;
     }
 
-    private JPanel buildEditorPanel()
+    private JTabbedPane buildEditorPanel()
+    {
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.addTab("Request", buildRequestEditorPanel());
+        tabs.addTab("Auth", buildAuthPanel());
+        return tabs;
+    }
+
+    private JPanel buildRequestEditorPanel()
     {
         JPanel panel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
@@ -231,6 +257,47 @@ public final class GraphQLHunterTab extends JPanel
 
         gbc.gridx = 2;
         panel.add(labeledScroll("Headers", headersArea, 220), gbc);
+
+        return panel;
+    }
+
+    private JPanel buildAuthPanel()
+    {
+        JPanel panel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4, 4, 4, 4);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        panel.add(new JLabel("Mode"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 0.4;
+        panel.add(authModeCombo, gbc);
+
+        gbc.gridx = 2;
+        gbc.weightx = 0;
+        panel.add(new JLabel("Profile"), gbc);
+        gbc.gridx = 3;
+        gbc.weightx = 0.6;
+        panel.add(authProfileCombo, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.gridwidth = 4;
+        panel.add(authDetectFailuresCheck, gbc);
+
+        gbc.gridy = 2;
+        gbc.weightx = 1.0;
+        gbc.weighty = 0.34;
+        gbc.fill = GridBagConstraints.BOTH;
+        panel.add(labeledScroll("Auth Variables (key=value)", authVarsArea, 160), gbc);
+
+        gbc.gridy = 3;
+        panel.add(labeledScroll("Static Auth Headers", authStaticHeadersArea, 140), gbc);
+
+        gbc.gridy = 4;
+        panel.add(labeledScroll("Imported Auth Headers (read-only)", authImportedHeadersArea, 140), gbc);
 
         return panel;
     }
@@ -291,6 +358,18 @@ public final class GraphQLHunterTab extends JPanel
             safeModeCheck.setSelected(state.scanSettings.safeMode);
             delayField.setText(state.scanSettings.delaySeconds == null ? "" : String.valueOf(state.scanSettings.delaySeconds));
         }
+        if (state.authSettings != null)
+        {
+            authModeCombo.setSelectedItem(state.authSettings.mode == null || state.authSettings.mode.isBlank() ? "none" : state.authSettings.mode);
+            if (state.authSettings.profileName != null && !state.authSettings.profileName.isBlank())
+            {
+                authProfileCombo.setSelectedItem(state.authSettings.profileName);
+            }
+            authDetectFailuresCheck.setSelected(state.authSettings.detectFailures);
+            authVarsArea.setText(renderKeyValueMap(state.authSettings.authVars));
+            authStaticHeadersArea.setText(renderHeaders(state.authSettings.staticHeaders));
+            authImportedHeadersArea.setText(renderHeaders(state.authSettings.importedAuthHeaders));
+        }
         statusLabel.setText("Ready.");
     }
 
@@ -301,7 +380,7 @@ public final class GraphQLHunterTab extends JPanel
         state.lastRequest = buildRequestFromInputs();
         state.scanSettings = buildScanSettingsFromInputs();
         state.scanProfile = state.scanSettings.profileName;
-        state.authSettings = current == null || current.authSettings == null ? new graphqlhunter.GraphQLHunterModels.AuthSettings() : current.authSettings.copy();
+        state.authSettings = buildAuthSettingsFromInputs(current == null ? null : current.authSettings);
         actions.saveState(state);
         statusLabel.setText("Saved current request state.");
     }
@@ -371,6 +450,17 @@ public final class GraphQLHunterTab extends JPanel
         return settings;
     }
 
+    private AuthSettings buildAuthSettingsFromInputs(AuthSettings existing)
+    {
+        AuthSettings settings = existing == null ? new AuthSettings() : existing.copy();
+        settings.mode = String.valueOf(authModeCombo.getSelectedItem());
+        settings.profileName = authProfileCombo.getSelectedItem() == null ? "" : String.valueOf(authProfileCombo.getSelectedItem());
+        settings.detectFailures = authDetectFailuresCheck.isSelected();
+        settings.authVars = parseKeyValueMap(authVarsArea.getText());
+        settings.staticHeaders = parseHeaders(authStaticHeadersArea.getText());
+        return settings;
+    }
+
     private Object parseVariables(String text)
     {
         if (text == null || text.isBlank())
@@ -416,10 +506,36 @@ public final class GraphQLHunterTab extends JPanel
         return headers;
     }
 
+    private Map<String, String> parseKeyValueMap(String text)
+    {
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        if (text == null || text.isBlank())
+        {
+            return values;
+        }
+        for (String line : text.split("\\R"))
+        {
+            if (line == null || line.isBlank() || !line.contains("="))
+            {
+                continue;
+            }
+            String[] parts = line.split("=", 2);
+            values.put(parts[0].trim(), parts[1].trim());
+        }
+        return values;
+    }
+
     private String renderHeaders(Map<String, String> headers)
     {
         StringBuilder builder = new StringBuilder();
         headers.forEach((key, value) -> builder.append(key).append(": ").append(value).append(System.lineSeparator()));
+        return builder.toString().trim();
+    }
+
+    private String renderKeyValueMap(Map<String, String> values)
+    {
+        StringBuilder builder = new StringBuilder();
+        values.forEach((key, value) -> builder.append(key).append('=').append(value).append(System.lineSeparator()));
         return builder.toString().trim();
     }
 
