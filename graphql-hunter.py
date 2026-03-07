@@ -8,6 +8,7 @@ import sys
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict
 
 ROOT = Path(__file__).parent
 LIB_DIR = ROOT / "lib"
@@ -162,6 +163,16 @@ def _merge_headers(base_headers, new_headers):
     for key, value in (new_headers or {}).items():
         base_headers.setdefault(key, value)
     return base_headers
+
+
+def determine_exit_code(summary: Dict[str, Any]) -> int:
+    """Return exit code based on confirmed severities only."""
+    confirmed_counts = (summary or {}).get('confirmed_by_severity', {})
+    if confirmed_counts.get('CRITICAL', 0) > 0:
+        return 2
+    if confirmed_counts.get('HIGH', 0) > 0:
+        return 1
+    return 0
 
 def parse_args():
     """Parse command line arguments"""
@@ -606,57 +617,40 @@ def main():
     # Store all findings
     all_findings = []
     failed_scanners = []
+
+    scan_plan = [
+        ('introspection', 'Introspection', lambda: IntrospectionScanner(client, reporter, profile_config), not args.skip_introspection, 'disabled by --skip-introspection'),
+        ('info_disclosure', 'Information Disclosure', lambda: InfoDisclosureScanner(client, reporter, profile_config), not args.skip_info_disclosure, 'disabled by --skip-info-disclosure'),
+        ('auth', 'Authentication/Authorization', lambda: AuthBypassScanner(client, reporter, profile_config), not args.skip_auth, 'disabled by --skip-auth'),
+        ('injection', 'Injection', lambda: InjectionScanner(client, reporter, profile_config), not args.skip_injection, 'disabled by --skip-injection'),
+        ('dos', 'DoS Vectors', lambda: DoSScanner(client, reporter, profile_config), (not args.skip_dos and profile_config.get('enable_dos', True)), 'disabled by --skip-dos or profile'),
+        ('batching', 'Batching Attacks', lambda: BatchingScanner(client, reporter, profile_config), not args.skip_batching, 'disabled by --skip-batching'),
+        ('aliasing', 'Aliasing Abuse', lambda: AliasingScanner(client, reporter, profile_config), not args.skip_aliasing, 'disabled by --skip-aliasing'),
+        ('circular', 'Circular Queries', lambda: CircularQueryScanner(client, reporter, profile_config), not args.skip_circular, 'disabled by --skip-circular'),
+        ('mutation_fuzzing', 'Mutation Fuzzing', lambda: MutationFuzzer(client, reporter, profile_config), not args.skip_mutation_fuzzing, 'disabled by --skip-mutation-fuzzing'),
+        ('xss', 'Cross-Site Scripting (XSS)', lambda: XSSScanner(client, reporter, profile_config), not args.skip_xss, 'disabled by --skip-xss'),
+        ('jwt', 'JWT Security', lambda: JWTScanner(client, reporter, profile_config), not args.skip_jwt, 'disabled by --skip-jwt'),
+        ('rate_limit', 'Rate Limiting', lambda: RateLimitingScanner(client, reporter, profile_config), (not args.skip_rate_limit and profile_config.get('enable_rate_limit_testing', True)), 'disabled by --skip-rate-limit or profile'),
+        ('csrf', 'CSRF Protection', lambda: CSRFScanner(client, reporter, profile_config), (not args.skip_csrf and profile_config.get('enable_csrf_testing', True)), 'disabled by --skip-csrf or profile'),
+        ('file_upload', 'File Upload', lambda: FileUploadScanner(client, reporter, profile_config), (not args.skip_file_upload and profile_config.get('enable_file_upload_testing', True)), 'disabled by --skip-file-upload or profile'),
+    ]
+
+    scanners = [(display_name, factory()) for _, display_name, factory, enabled, _ in scan_plan if enabled]
+    executed_scanners = [display_name for _, display_name, _, enabled, _ in scan_plan if enabled]
+    skipped_scanners = [
+        {'scanner': display_name, 'reason': reason}
+        for _, display_name, _, enabled, reason in scan_plan if not enabled
+    ]
+
     scan_metadata = {
         'target': args.url,
         'profile': args.profile,
         'safe_mode': args.safe_mode,
         'timestamp': datetime.now(timezone.utc).isoformat(),
+        'status': 'running',
+        'executed_scanners': executed_scanners,
+        'skipped_scanners': skipped_scanners,
     }
-    
-    # Run scanners
-    scanners = []
-    
-    if not args.skip_introspection:
-        scanners.append(('Introspection', IntrospectionScanner(client, reporter, profile_config)))
-    
-    if not args.skip_info_disclosure:
-        scanners.append(('Information Disclosure', InfoDisclosureScanner(client, reporter, profile_config)))
-    
-    if not args.skip_auth:
-        scanners.append(('Authentication/Authorization', AuthBypassScanner(client, reporter, profile_config)))
-    
-    if not args.skip_injection:
-        scanners.append(('Injection', InjectionScanner(client, reporter, profile_config)))
-    
-    if not args.skip_dos and profile_config.get('enable_dos', True):
-        scanners.append(('DoS Vectors', DoSScanner(client, reporter, profile_config)))
-    
-    if not args.skip_batching:
-        scanners.append(('Batching Attacks', BatchingScanner(client, reporter, profile_config)))
-    
-    if not args.skip_aliasing:
-        scanners.append(('Aliasing Abuse', AliasingScanner(client, reporter, profile_config)))
-    
-    if not args.skip_circular:
-        scanners.append(('Circular Queries', CircularQueryScanner(client, reporter, profile_config)))
-    
-    if not args.skip_mutation_fuzzing:
-        scanners.append(('Mutation Fuzzing', MutationFuzzer(client, reporter, profile_config)))
-    
-    if not args.skip_xss:
-        scanners.append(('Cross-Site Scripting (XSS)', XSSScanner(client, reporter, profile_config)))
-    
-    if not args.skip_jwt:
-        scanners.append(('JWT Security', JWTScanner(client, reporter, profile_config)))
-    
-    if not args.skip_rate_limit and profile_config.get('enable_rate_limit_testing', True):
-        scanners.append(('Rate Limiting', RateLimitingScanner(client, reporter, profile_config)))
-    
-    if not args.skip_csrf and profile_config.get('enable_csrf_testing', True):
-        scanners.append(('CSRF Protection', CSRFScanner(client, reporter, profile_config)))
-    
-    if not args.skip_file_upload and profile_config.get('enable_file_upload_testing', True):
-        scanners.append(('File Upload', FileUploadScanner(client, reporter, profile_config)))
     
     # Execute scanners
     for scanner_name, scanner in scanners:
@@ -688,14 +682,22 @@ def main():
         reporter.print_separator()
     
     # Print summary
+    scan_metadata['status'] = 'partial' if failed_scanners else 'completed'
+    scan_metadata['failed_scanners'] = failed_scanners
     summary = reporter.get_summary_stats(all_findings)
-    reporter.print_summary(all_findings)
+    reporter.print_summary(all_findings, scan_info=scan_metadata)
     
     # Save to JSON if requested
     if args.output:
         try:
             output_data = {
                 'metadata': scan_metadata,
+                'scan': {
+                    'status': scan_metadata['status'],
+                    'executed_scanners': executed_scanners,
+                    'skipped_scanners': skipped_scanners,
+                    'failed_scanners': failed_scanners,
+                },
                 'findings': all_findings,
                 'summary': summary,
                 'errors': failed_scanners,
@@ -711,6 +713,12 @@ def main():
         try:
             output_data = {
                 'metadata': scan_metadata,
+                'scan': {
+                    'status': scan_metadata['status'],
+                    'executed_scanners': executed_scanners,
+                    'skipped_scanners': skipped_scanners,
+                    'failed_scanners': failed_scanners,
+                },
                 'findings': all_findings,
                 'summary': summary,
                 'errors': failed_scanners,
@@ -719,22 +727,14 @@ def main():
                 output_data['metadata'],
                 output_data['findings'],
                 output_data['summary'],
-                args.html
+                args.html,
+                scan_info=output_data['scan']
             )
             reporter.print_success(f"HTML report saved to {args.html}")
         except Exception as e:
             reporter.print_error(f"Failed to save HTML: {e}")
     
-    # Return exit code based on confirmed findings only
-    confirmed_counts = summary.get('confirmed_by_severity', {})
-    critical_count = confirmed_counts.get('CRITICAL', 0)
-    high_count = confirmed_counts.get('HIGH', 0)
-    
-    if critical_count > 0:
-        return 2
-    elif high_count > 0:
-        return 1
-    return 0
+    return determine_exit_code(summary)
 
 
 def get_profile_config(profile):

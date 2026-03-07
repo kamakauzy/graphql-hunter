@@ -12,7 +12,7 @@ class HTMLReporter:
     """Generate HTML security reports"""
     
     @staticmethod
-    def generate(metadata: Dict, findings: List[Dict], summary: Dict, output_file: str):
+    def generate(metadata: Dict, findings: List[Dict], summary: Dict, output_file: str, scan_info: Dict | None = None):
         """
         Generate HTML report
         
@@ -22,13 +22,13 @@ class HTMLReporter:
             summary: Summary statistics
             output_file: Output file path
         """
-        html = HTMLReporter._build_html(metadata, findings, summary)
+        html = HTMLReporter._build_html(metadata, findings, summary, scan_info=scan_info)
         
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(html)
     
     @staticmethod
-    def _build_html(metadata: Dict, findings: List[Dict], summary: Dict) -> str:
+    def _build_html(metadata: Dict, findings: List[Dict], summary: Dict, scan_info: Dict | None = None) -> str:
         """Build complete HTML document"""
         
         # Read and encode banner image
@@ -497,6 +497,14 @@ class HTMLReporter:
                 <div class="metadata-item">
                     <label>Safe Mode</label>
                     <value>{"Enabled" if metadata.get('safe_mode') else "Disabled"}</value>
+                </div>
+                <div class="metadata-item">
+                    <label>Scan Status</label>
+                    <value>{HTMLReporter._escape_html((scan_info or {}).get('status', metadata.get('status', 'completed')))}</value>
+                </div>
+                <div class="metadata-item">
+                    <label>Scanner Coverage</label>
+                    <value>{len((scan_info or {}).get('executed_scanners', metadata.get('executed_scanners', [])))} executed / {len((scan_info or {}).get('skipped_scanners', metadata.get('skipped_scanners', [])))} skipped / {len((scan_info or {}).get('failed_scanners', metadata.get('failed_scanners', [])))} failed</value>
                 </div>
             </div>
         </div>

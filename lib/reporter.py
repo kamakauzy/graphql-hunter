@@ -156,7 +156,7 @@ class Reporter:
         if remediation:
             print(f"  {self._colorize('Remediation:', 'SUCCESS')} {remediation}")
     
-    def print_summary(self, findings: List[Dict]):
+    def print_summary(self, findings: List[Dict], scan_info: Dict | None = None):
         """
         Print scan summary
         
@@ -214,6 +214,10 @@ class Reporter:
         print(f"  Confirmed: {status_counts['confirmed']}")
         print(f"  Potential: {status_counts['potential']}")
         print(f"  Manual review: {status_counts['manual_review']}")
+        if scan_info:
+            print(f"  Executed scanners: {len(scan_info.get('executed_scanners', []))}")
+            print(f"  Skipped scanners: {len(scan_info.get('skipped_scanners', []))}")
+            print(f"  Failed scanners: {len(scan_info.get('failed_scanners', []))}")
         
         # Risk assessment
         print()

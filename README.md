@@ -266,6 +266,7 @@ Reports now distinguish:
 - **manual_review** findings - attack surface or heuristics that should be validated by a human
 
 JSON/HTML output also includes status counts and confirmed-severity rollups so automation can reason about noise vs. confirmed risk.
+The JSON report includes a `scan` section describing executed, skipped, and failed scanners so you can see exactly what coverage was achieved.
 
 ### Selective Scanning
 
