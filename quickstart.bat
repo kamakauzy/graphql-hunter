@@ -25,7 +25,7 @@ if errorlevel 1 (
     echo.
     echo [!] Dependencies not installed. Installing now...
     pip install -r requirements.txt
-    pip install -e .
+    pip install .
     if errorlevel 1 (
         echo [ERROR] Failed to install dependencies
         pause

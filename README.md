@@ -64,15 +64,15 @@ cd graphql-hunter
 # Install dependencies (shouldn't take longer than making coffee)
 pip install -r requirements.txt
 
-# Optional: install editable CLI entrypoints
-python -m pip install -e .
+# Optional: install CLI entrypoints
+python -m pip install .
 
 # Run a test scan (prepare for bad news)
 gqlh -u https://countries.trevorblades.com/graphql
 ```
 
 CLI note:
-- Preferred commands: `gqlh ...` or `graphql-hunter ...` after `pip install -e .`
+- Preferred commands: `gqlh ...` or `graphql-hunter ...` after `pip install .`
 - Source-checkout fallback: `python3 gqlh.py ...`
 - Legacy `python3 graphql-hunter.py ...` usage still works
 
