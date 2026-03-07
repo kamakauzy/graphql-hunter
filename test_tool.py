@@ -50,10 +50,10 @@ def test_public_endpoint():
     # There are few reliable public GraphQL endpoints
     # We'll just show the command they would run
     print("\n    To test against a real endpoint, run:")
-    print("    python graphql-hunter.py -u https://countries.trevorblades.com/graphql")
+    print("    gqlh -u https://countries.trevorblades.com/graphql")
     print()
     print("    Or use the interactive auth wizard:")
-    print("    python graphql-hunter.py --auth-wizard")
+    print("    gqlh --auth-wizard")
     print()
 
 def main():
@@ -82,10 +82,10 @@ def main():
     print("=" * 60)
     print()
     print("Quick start:")
-    print("  python graphql-hunter.py -u https://api.example.com/graphql")
+    print("  gqlh -u https://api.example.com/graphql")
     print()
     print("For more options:")
-    print("  python graphql-hunter.py --help")
+    print("  gqlh --help")
     print()
     
     return 0

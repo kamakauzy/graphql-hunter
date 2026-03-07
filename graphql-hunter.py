@@ -182,19 +182,19 @@ def parse_args():
         epilog="""
 Examples:
   # Basic scan
-  python graphql-hunter.py -u https://api.example.com/graphql
+  gqlh -u https://api.example.com/graphql
 
   # Scan with authentication
-  python graphql-hunter.py -u https://api.example.com/graphql -H "Authorization: Bearer TOKEN"
+  gqlh -u https://api.example.com/graphql -H "Authorization: Bearer TOKEN"
 
   # Deep scan with output file
-  python graphql-hunter.py -u https://api.example.com/graphql -p deep -o results.json
+  gqlh -u https://api.example.com/graphql -p deep -o results.json
 
   # Safe mode (skip DoS tests)
-  python graphql-hunter.py -u https://api.example.com/graphql --safe-mode
+  gqlh -u https://api.example.com/graphql --safe-mode
 
   # Stealth mode with delays
-  python graphql-hunter.py -u https://api.example.com/graphql -p stealth --delay 2
+  gqlh -u https://api.example.com/graphql -p stealth --delay 2
         """
     )
     
@@ -528,8 +528,8 @@ def main():
 
     if not args.url:
         reporter.print_error("Missing required argument: -u/--url")
-        reporter.print_info("Run: python graphql-hunter.py --help")
-        reporter.print_info("Or use: python graphql-hunter.py --auth-wizard")
+        reporter.print_info("Run: gqlh --help")
+        reporter.print_info("Or use: gqlh --auth-wizard")
         return 1
 
     auth_manager = AuthManager.from_cli_args(args, reporter=reporter)

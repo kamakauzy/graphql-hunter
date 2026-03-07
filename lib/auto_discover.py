@@ -343,7 +343,7 @@ class AutoDiscover:
         # Build command
         if self.discovered['url']:
             cmd_parts = [
-                'python graphql-hunter.py',
+                'gqlh',
                 f"-u {shlex.quote(self.discovered['url'])}"
             ]
             

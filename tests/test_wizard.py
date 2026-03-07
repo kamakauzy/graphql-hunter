@@ -24,7 +24,7 @@ class TestWizard(unittest.TestCase):
             rc = run_auth_wizard(args=type("A", (), {"url": None})(), reporter=None)
         self.assertEqual(rc, 0)
         out = buf.getvalue()
-        self.assertIn("python graphql-hunter.py -u", out)
+        self.assertIn("gqlh -u", out)
         self.assertIn("--auth-profile bearer", out)
         self.assertIn("GQLH_ACCESS_TOKEN", out)
         self.assertIn("export GQLH_ACCESS_TOKEN=", out)
@@ -37,7 +37,7 @@ class TestWizard(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         out = buf.getvalue()
-        self.assertIn('python graphql-hunter.py -u "https://example.com/graphql"', out)
+        self.assertIn('gqlh -u "https://example.com/graphql"', out)
 
 
 if __name__ == "__main__":

@@ -76,6 +76,15 @@ class TestAutoDiscover(unittest.TestCase):
         self.assertEqual(first["url"], "https://first.example/graphql")
         self.assertEqual(second["url"], "https://second.example/graphql")
 
+    def test_generated_command_prefers_gqlh(self):
+        results = AutoDiscover().auto_discover([
+            "email: user@example.com",
+            "password: YOUR_PASSWORD",
+            "url: https://api.example.com/graphql",
+        ])
+
+        self.assertTrue(results["recommendations"]["command_simple"].startswith("gqlh "))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -106,7 +106,7 @@ def run_auth_wizard(args, reporter=None) -> int:
         print("# (none)")
 
     print("\n### Run scan")
-    cmd = f'python graphql-hunter.py -u "{res.url}" --auth-profile {res.auth_profile}{res.extra_args}'
+    cmd = f'gqlh -u "{res.url}" --auth-profile {res.auth_profile}{res.extra_args}'
     print(cmd)
 
     print("\nNotes:")

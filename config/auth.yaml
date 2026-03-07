@@ -110,7 +110,7 @@ profiles:
 
   # tokenAuth mutation + Token header + CSRF cookie
   # Generic profile for APIs using tokenAuth mutation with Token header
-  # Usage: python graphql-hunter.py -u https://api.example.com/graphql/ \
+  # Usage: gqlh -u https://api.example.com/graphql/ \
   #   --auth-profile token_auth \
   #   --auth-var email=your@email.com \
   #   --auth-var password=yourpassword

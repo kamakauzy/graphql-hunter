@@ -25,6 +25,7 @@ if errorlevel 1 (
     echo.
     echo [!] Dependencies not installed. Installing now...
     pip install -r requirements.txt
+    pip install -e .
     if errorlevel 1 (
         echo [ERROR] Failed to install dependencies
         pause
@@ -39,13 +40,13 @@ echo GraphQL Hunter is ready!
 echo ================================
 echo.
 echo Usage:
-echo   python graphql-hunter.py -u https://api.example.com/graphql
+echo   gqlh -u https://api.example.com/graphql
 echo.
 echo Auth Wizard (interactive):
-echo   python graphql-hunter.py --auth-wizard
+echo   gqlh --auth-wizard
 echo.
 echo For help:
-echo   python graphql-hunter.py --help
+echo   gqlh --help
 echo.
 echo Test the tool:
 echo   python test_tool.py
