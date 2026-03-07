@@ -64,7 +64,7 @@ def redact_headers(headers: Mapping[str, Any], sensitive_header_names: Iterable[
 
 
 _BEARER_RE = re.compile(r"\bBearer\s+([A-Za-z0-9\-\._~\+/]+=*)", re.IGNORECASE)
-_JWT_RE = re.compile(r"\b([A-Za-z0-9\-_]+)\.([A-Za-z0-9\-_]+)\.([A-Za-z0-9\-_]+)\b")
+_JWT_RE = re.compile(r"\b(eyJ[A-Za-z0-9\-_]+)\.([A-Za-z0-9\-_]{5,})\.([A-Za-z0-9\-_]{5,})\b")
 
 
 def redact_text(text: str) -> str:

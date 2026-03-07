@@ -6,7 +6,7 @@ GraphQL Hunter - A comprehensive GraphQL security testing tool
 import argparse
 import sys
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).parent
@@ -610,7 +610,7 @@ def main():
         'target': args.url,
         'profile': args.profile,
         'safe_mode': args.safe_mode,
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
     }
     
     # Run scanners

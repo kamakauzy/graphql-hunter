@@ -1,29 +1,29 @@
 pdt_uid
-BxgXBrgwswcX58wFNwhVfv
+YOUR_PDT_UID
 
 test_email
-chloe.scott+sleepiowellnesstest@bighealth.com
+your-test-user@example.com
 
 test_password
-Minniecupcakes1!
+YOUR_PASSWORD
 
 access_code
-23771
+YOUR_ACCESS_CODE
 
 patient_uid
-biATtXVwrnTuJVRbLkk4fS
+YOUR_PATIENT_UID
 
 careteams_uid
-BLhcSbRVTwVMZXpMGtyHTK
+YOUR_CARETEAMS_UID
 
 cortex_url
-https://cortex.bighealthstage.com/stage/graphql/
+https://cortex.example.com/stage/graphql/
 
 url
-https://cortex.bighealthstage.com/stage/graphql/
+https://cortex.example.com/stage/graphql/
 
 refreshToken
-1fb805c17a0145889c2335c96cacb0866d2dff77
+YOUR_REFRESH_TOKEN
 
 apikey
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImNobG9lLnNjb3R0K3NsZWVwaW93ZWxsbmVzc3Rlc3RAYmlnaGVhbHRoLmNvbSIsImV4cCI6MTc2NjEwODIwMSwib3JpZ0lhdCI6MTc2NjEwNzkwMX0.Tb_kVCY0BkAoZY2zinyMjatDEG7WFpd0gBkwrDqT3-g
+YOUR_ACCESS_TOKEN

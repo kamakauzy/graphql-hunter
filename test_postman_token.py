@@ -48,10 +48,10 @@ MUTATION_VARIABLES = {
 def test_postman_token():
     """Test if Postman-Token header is required"""
     url = "https://api.example.com/graphql/"
-    token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImNobG9lLnNjb3R0K3NsZWVwaW93ZWxsbmVzc3Rlc3RAYmlnaGVhbHRoLmNvbSIsImV4cCI6MTc2NjA3NjE4Miwib3JpZ0lhdCI6MTc2NjA3NTg4Mn0.kgTN66JqHncXaZr_xvR1imEb-z-M__Bb5KCcmrmHIO0"
-    csrf_token = "deiPMVkXB6kpOhvH1ubIhfwWFkVyTbDE"
-    postman_token_1 = "52cceb0e-c3e6-4366-a200-1c2e332223e3"  # From first request
-    postman_token_2 = "cc81bcae-a38d-4006-9a03-f841681e79cc"  # From second request
+    token = "YOUR_ACCESS_TOKEN"
+    csrf_token = "YOUR_CSRF_TOKEN"
+    postman_token_1 = "YOUR_POSTMAN_TOKEN_1"
+    postman_token_2 = "YOUR_POSTMAN_TOKEN_2"
     
     print("=" * 70)
     print("POSTMAN-TOKEN HEADER VALIDATION TEST")

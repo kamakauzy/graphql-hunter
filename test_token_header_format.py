@@ -13,8 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent / "lib"))
 from graphql_client import GraphQLClient
 
 CREDENTIALS = {
-    "email": "chloe.scott+sleepiowellnesstest@bighealth.com",
-    "password": "Minniecupcakes1!"
+    "email": "YOUR_EMAIL@example.com",
+    "password": "YOUR_PASSWORD"
 }
 
 URL = "https://api.example.com/graphql/"

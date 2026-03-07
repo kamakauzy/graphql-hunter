@@ -71,10 +71,10 @@ mutation RefreshToken($refreshToken: String!) {
 ## Credentials Used
 
 ```
-Email: chloe.scott+sleepiowellnesstest@bighealth.com
-Password: Minniecupcakes1!
-PDT UID: BxgXBrgwswcX58wFNwhVfv
-Access Code: 23771
+Email: your-test-user@example.com
+Password: YOUR_PASSWORD
+PDT UID: YOUR_PDT_UID
+Access Code: YOUR_ACCESS_CODE
 ```
 
 ## Authentication Headers

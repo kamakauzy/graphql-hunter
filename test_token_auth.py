@@ -48,8 +48,8 @@ MUTATION_VARIABLES = {
 def test_token_auth():
     """Test Token header authentication"""
     url = "https://api.example.com/graphql/"
-    token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImNobG9lLnNjb3R0K3NsZWVwaW93ZWxsbmVzc3Rlc3RAYmlnaGVhbHRoLmNvbSIsImV4cCI6MTc2NjA3NjE4Miwib3JpZ0lhdCI6MTc2NjA3NTg4Mn0.kgTN66JqHncXaZr_xvR1imEb-z-M__Bb5KCcmrmHIO0"
-    csrf_token = "deiPMVkXB6kpOhvH1ubIhfwWFkVyTbDE"
+    token = "YOUR_ACCESS_TOKEN"
+    csrf_token = "YOUR_CSRF_TOKEN"
     
     print("=" * 70)
     print("TOKEN HEADER AUTHENTICATION VALIDATION TEST")

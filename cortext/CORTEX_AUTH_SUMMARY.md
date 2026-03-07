@@ -31,8 +31,8 @@ mutation TokenAuth($email: String!, $password: String!) {
 ```
 
 **Credentials:**
-- Email: `chloe.scott+sleepiowellnesstest@bighealth.com`
-- Password: `Minniecupcakes1!`
+- Email: `your-test-user@example.com`
+- Password: `YOUR_PASSWORD`
 
 ### Step 2: Use Token
 Include token in requests:
@@ -59,7 +59,7 @@ mutation RefreshToken($refreshToken: String!) {
 2. **Token format** - Valid JWT tokens returned
 3. **Refresh token** - Successfully refreshes expired tokens
 4. **CSRF cookies** - Automatically set by server
-5. **Auth profile** - Integrated into tool via `cortex_stage` profile
+5. **Auth profile** - Integrated into the tool via the generic `token_auth` profile
 
 ### ⚠️ Observations:
 1. **Permission Errors** - All tested queries return "You do not have permission"
@@ -79,8 +79,8 @@ mutation RefreshToken($refreshToken: String!) {
 ```bash
 # Authenticate and scan
 python graphql-hunter.py \
-  -u https://cortex.bighealthstage.com/stage/graphql/ \
-  --auth-profile cortex_stage \
+  -u https://cortex.example.com/stage/graphql/ \
+  --auth-profile token_auth \
   --auth-var email=your@email.com \
   --auth-var password=yourpassword \
   --validate-auth
@@ -99,7 +99,7 @@ If you already have a token:
 
 ```bash
 python graphql-hunter.py \
-  -u https://cortex.bighealthstage.com/stage/graphql/ \
+  -u https://cortex.example.com/stage/graphql/ \
   -H "Token: YOUR_JWT_TOKEN" \
   --validate-auth
 ```
@@ -125,7 +125,7 @@ python graphql-hunter.py \
 ## Recommendations
 
 ### For Testing:
-1. ✅ Use `--auth-profile cortex_stage` with email/password
+1. ✅ Use `--auth-profile token_auth` with email/password
 2. ✅ Use `--validate-auth` to verify authentication is working
 3. ⚠️ Test with queries the user account has permissions for
 4. ✅ Token is valid - permission errors indicate authorization, not authentication
@@ -157,12 +157,9 @@ This is an **authorization** issue (user permissions), not an **authentication**
 
 ## Files Created/Updated
 
-1. ✅ `config/auth.yaml` - Added `cortex_stage` profile
+1. ✅ `config/auth.yaml` - Generic `token_auth` profile available for tokenAuth-based APIs
 2. ✅ `CORTEX_AUTH_ANALYSIS.md` - Detailed analysis
-3. ✅ `test_cortex_auth.py` - Authentication flow test
-4. ✅ `test_cortex_auth_simple.py` - Simple query comparison
-5. ✅ `test_token_header_format.py` - Header format testing
-6. ✅ `test_cortex_session.py` - Session cookie testing
+3. ✅ `test_token_header_format.py` - Header format testing helper
 
 ## Next Steps
 

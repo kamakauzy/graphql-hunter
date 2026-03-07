@@ -12,10 +12,10 @@ sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
 from graphql_client import GraphQLClient
 
-# New token from the tokenAuth response
-NEW_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImNobG9lLnNjb3R0K3NsZWVwaW93ZWxsbmVzc3Rlc3RAYmlnaGVhbHRoLmNvbSIsImV4cCI6MTc2NjEwODIwMSwib3JpZ0lhdCI6MTc2NjEwNzkwMX0.Tb_kVCY0BkAoZY2zinyMjatDEG7WFpd0gBkwrDqT3-g"
-REFRESH_TOKEN = "1fb805c17a0145889c2335c96cacb0866d2dff77"
-CSRF_TOKEN = "deiPMVkXB6kpOhvH1ubIhfwWFkVyTbDE"  # From Set-Cookie header
+# Token values from a prior tokenAuth response. Replace with your own test credentials.
+NEW_TOKEN = "YOUR_NEW_ACCESS_TOKEN"
+REFRESH_TOKEN = "YOUR_REFRESH_TOKEN"
+CSRF_TOKEN = "YOUR_CSRF_TOKEN"
 
 # Mutation to test
 MUTATION_QUERY = """mutation ReportTaskStart(
@@ -81,7 +81,7 @@ def test_new_token():
         {
             "name": "OLD Token + Cookie (for comparison)",
             "headers": {
-                "Token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImNobG9lLnNjb3R0K3NsZWVwaW93ZWxsbmVzc3Rlc3RAYmlnaGVhbHRoLmNvbSIsImV4cCI6MTc2NjA3NjE4Miwib3JpZ0lhdCI6MTc2NjA3NTg4Mn0.kgTN66JqHncXaZr_xvR1imEb-z-M__Bb5KCcmrmHIO0",
+                "Token": "YOUR_OLD_ACCESS_TOKEN",
                 "Cookie": f"csrftoken={CSRF_TOKEN}",
                 "User-Agent": "PostmanRuntime/7.51.0",
                 "Accept": "*/*"

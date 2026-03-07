@@ -31,6 +31,11 @@ class TestRedact(unittest.TestCase):
         self.assertNotIn(jwt, out)
         self.assertIn("Bearer ***REDACTED***", out)
 
+    def test_redact_text_does_not_redact_normal_domain_names(self):
+        text = "https://countries.trevorblades.com/graphql"
+        out = redact_text(text)
+        self.assertEqual(out, text)
+
     def test_sanitize_finding_deep(self):
         finding = {
             "title": "Test",

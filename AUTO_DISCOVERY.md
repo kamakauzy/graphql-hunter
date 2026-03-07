@@ -5,11 +5,11 @@
 The auto-discovery feature automatically figures out authentication, configuration, and setup from notes, JSON files, YAML files, or any text input. Just provide your notes/files and the tool will:
 
 - ✅ Extract URLs and endpoints
-- ✅ Detect authentication methods
+- ✅ Detect common tokenAuth / token-header authentication patterns
 - ✅ Find credentials (email, password, tokens)
 - ✅ Discover headers and tokens
 - ✅ Generate ready-to-run commands
-- ✅ Auto-configure auth profiles
+- ✅ Auto-configure the built-in `token_auth` profile when email/password are discovered
 
 ## Usage
 
@@ -34,7 +34,7 @@ python graphql-hunter.py --auto-discover notes.txt -p deep -o results.json
 ```bash
 # Provide notes directly
 python graphql-hunter.py --discover-notes "email: user@example.com
-password: secret123
+password: YOUR_PASSWORD
 url: https://api.example.com/graphql"
 ```
 
@@ -48,8 +48,7 @@ url: https://api.example.com/graphql"
 ### 2. Authentication Methods
 - **tokenAuth** - Detects GraphQL tokenAuth mutations
 - **token_header** - Detects JWT tokens in headers
-- **OAuth** - Detects OAuth patterns
-- **API Key** - Detects API key patterns
+- **Authorization / Token / X-API-Key headers** - Preserves common header names when they are present in notes or imported files
 
 ### 3. Credentials
 - Email addresses
@@ -78,7 +77,8 @@ Given a notes file like:
 
 ```
 email: user@example.com
-password: secret123
+password: YOUR_PASSWORD
+password: YOUR_PASSWORD
 url: https://api.example.com/graphql/
 apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 refreshToken: abc123def456...
@@ -138,7 +138,7 @@ When discoveries are made, the tool automatically:
 1. **Sets URL** - If `-u` not provided, uses discovered URL
 2. **Configures Auth** - If credentials found, sets `--auth-profile`
 3. **Sets Auth Vars** - Automatically sets `--auth-var email=...` etc.
-4. **Adds Headers** - If tokens found, adds `-H "Token: ..."`
+4. **Adds Headers** - If headers are found, preserves their original names (for example `Authorization`, `Token`, or `X-API-Key`)
 
 ## Generated Commands
 
@@ -150,7 +150,7 @@ python graphql-hunter.py \
   -u https://api.example.com/graphql/ \
   --auth-profile token_auth \
   --auth-var email=user@example.com \
-  --auth-var password=secret123 \
+  --auth-var password=YOUR_PASSWORD \
   --validate-auth
 ```
 
@@ -169,7 +169,7 @@ Auto-discovery works seamlessly with:
 ```bash
 # Create notes.txt with credentials
 echo "email: user@example.com
-password: secret123
+password: YOUR_PASSWORD
 url: https://api.example.com/graphql" > notes.txt
 
 # Auto-discover and scan
@@ -192,7 +192,7 @@ python graphql-hunter.py \
 
 ## Limitations
 
-- Pattern matching may have false positives
+- Pattern matching may produce advisory/manual-review results
 - Complex nested structures may not be fully parsed
 - Some custom formats may not be recognized
 - Always verify discovered credentials before use

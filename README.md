@@ -219,7 +219,7 @@ python graphql-hunter.py --import collection.json --list-imported
 - **Postman Collection v2.1** - Automatically extracts all requests from collection
 - **JSON** - Simple request format with url, headers, query, variables
 - **YAML** - Same as JSON but in YAML format
-- **cURL commands** - Parse cURL command strings
+- **cURL commands / cURL text files** - Parse cURL command strings or text files containing a cURL request
 - **Raw HTTP** - Parse raw HTTP request strings
 
 **Example JSON format:**
@@ -239,6 +239,7 @@ When importing, the tool will automatically:
 - Extract URL, headers, query, and variables
 - Use the imported request for auth validation if `--validate-auth` is used
 - Merge imported headers with command-line headers (CLI headers take precedence)
+- Normalize JSON-string `variables` values into objects when possible
 
 ### Output Options
 
@@ -258,6 +259,13 @@ python graphql-hunter.py -u https://api.example.com/graphql -v
 # Disable colors (for logs that'll outlive us all)
 python graphql-hunter.py -u https://api.example.com/graphql --no-color > scan.txt
 ```
+
+Reports now distinguish:
+- **confirmed** findings - runtime evidence strongly supports the issue
+- **potential** findings - signals were observed, but impact still needs review
+- **manual_review** findings - attack surface or heuristics that should be validated by a human
+
+JSON/HTML output also includes status counts and confirmed-severity rollups so automation can reason about noise vs. confirmed risk.
 
 ### Selective Scanning
 
@@ -395,15 +403,12 @@ Auth Workflow Engine:
 Scan Configuration:
   -p, --profile PROFILE         Scan profile: quick, standard, deep, stealth (default: standard)
   --safe-mode                   Skip potentially destructive DoS tests
-  --delay SECONDS               Delay between requests in seconds (default: 0)
+  --delay SECONDS               Delay between requests in seconds (defaults to profile setting)
 
 Scanner Selection:
   --skip-introspection          Skip introspection scanner
   --skip-info-disclosure        Skip information disclosure checks
   --skip-auth                   Skip authentication/authorization tests
-  --skip-rate-limit             Skip rate limiting tests
-  --skip-csrf                   Skip CSRF tests
-  --skip-file-upload            Skip file upload tests
   --skip-injection              Skip injection tests
   --skip-dos                    Skip DoS vector tests
   --skip-batching               Skip batching attack tests
@@ -415,8 +420,9 @@ Scanner Selection:
   --skip-rate-limit             Skip rate limiting tests
   --skip-csrf                   Skip CSRF tests
   --skip-file-upload            Skip file upload tests
-  --brute-force-attempts N      Number of brute-force attempts (default: 20)
-  --rate-limit-requests N       Number of concurrent requests for rate limit test (default: 100)
+  --brute-force-attempts N      Number of brute-force attempts (defaults to profile setting)
+  --rate-limit-concurrency N    Number of concurrent workers for rate limit tests
+  --rate-limit-requests N       Total requests to send during rate limit tests
 
 Output Options:
   -o, --output FILE             Output JSON file path
@@ -444,20 +450,27 @@ Proxy Settings:
 
 *For the automation enthusiasts*
 
-- `0` - No critical or high severity findings (you can sleep tonight!)
-- `1` - High severity findings detected (coffee time)
-- `2` - Critical severity findings detected (update your LinkedIn profile)
+- `0` - No **confirmed** critical/high findings
+- `1` - Confirmed high severity findings detected
+- `2` - Confirmed critical severity findings detected
 - `130` - Scan interrupted by user (Ctrl+C is your friend)
 
 ### Interpreting Findings
 
 *How to read the tea leaves*
 
+Each finding now includes a **status**:
+- **confirmed** - behavior strongly supports the issue
+- **potential** - signal observed, but not fully proven
+- **manual_review** - attack surface or heuristic that should be checked manually
+
 Example critical finding:
 ```json
 {
   "title": "SQL Injection Vulnerability Detected",
   "severity": "CRITICAL",
+  "status": "confirmed",
+  "scanner": "injection",
   "description": "SQL error messages detected when testing query.field with injection payload",
   "impact": "SQL injection allows attackers to manipulate database queries...",
   "remediation": "Use parameterized queries or ORM methods...",
@@ -744,18 +757,19 @@ Tests mutations for Cross-Site Request Forgery vulnerabilities:
 
 Detects and tests file upload mutations:
 - Identifies Upload scalar type in schema
+- Flags them for manual review when full multipart exploitation cannot be exercised automatically
 - Recommends testing for path traversal
 - Recommends testing for oversized files
 - Recommends testing for malicious extensions
 
-**Usage**: Automatically enabled. Provides recommendations for manual testing.
+**Usage**: Automatically enabled. Findings are typically emitted as `manual_review` unless real multipart exploit evidence is captured.
 
 ### Enhanced Mutation Testing
 
 The mutation fuzzer now includes:
-- **Mass Assignment Testing**: Detects if mutations accept unexpected sensitive fields
-- **Enhanced IDOR Detection**: Better identification and actionable recommendations
-- **Privilege Escalation Testing**: Tests for role/admin field injection
+- **Mass Assignment Review**: Flags suspicious input objects for manual validation
+- **Enhanced IDOR Review**: Highlights object-ID mutation surfaces that warrant authorization testing
+- **Privilege Escalation Review**: Suggests role/admin field injection checks where applicable
 
 ### Enhanced Authentication Testing
 
@@ -766,16 +780,8 @@ The auth scanner now includes:
 ### Enhanced Injection/XSS Testing
 
 Both scanners now test mutations (not just queries):
-- **Injection Scanner**: Tests all mutation arguments for SQL/NoSQL/command injection
-- **XSS Scanner**: Tests all mutations with String arguments (removed 3-mutation limit)
-
-## Testing Guidelines
-   import { createRateLimitDirective } from 'graphql-rate-limit';
-   
-   const rateLimitDirective = createRateLimitDirective({
-     identifyContext: (ctx) => ctx.user.id  // Per-user limits
-   });
-   ```
+- **Injection Scanner**: Uses schema-valid operations and reports backend-specific error signatures as potential findings
+- **XSS Scanner**: Treats reflected payloads as review candidates unless browser-executable sink evidence is available
 
 ## Testing Guidelines
 
@@ -814,9 +820,9 @@ Check out the **real vulnerability scan** in the `examples/` directory:
 - **[dvga-report.html](examples/dvga-report.html)** - Beautiful HTML report (37.5 KB) - open in browser
 
 These were generated from a **deep scan of DVGA** (Damn Vulnerable GraphQL Application) showing **15 real findings**:
-- **3 HIGH** severity (IDOR, field aliasing abuse, unauth introspection)
-- **6 MEDIUM** severity (dangerous mutations, batching, no auth)
-- **6 INFO** severity (schema analysis, sensitive fields)
+- **confirmed** findings where runtime evidence was strong
+- **potential** findings where behavior was suspicious but not fully proven
+- **manual_review** findings highlighting attack surface worth validating by hand
 
 ### Terminal Output
 
@@ -837,6 +843,7 @@ These were generated from a **deep scan of DVGA** (Damn Vulnerable GraphQL Appli
 [!] Introspection is ENABLED
 
 [MEDIUM] GraphQL Introspection Enabled
+  Metadata: scanner=introspection, status=confirmed, confidence=confirmed
   Description: The GraphQL endpoint has introspection enabled...
   Impact: Attackers can map the entire API surface area...
   Remediation: Disable introspection in production environments...
@@ -845,10 +852,13 @@ These were generated from a **deep scan of DVGA** (Damn Vulnerable GraphQL Appli
 ----------------------------------------------------------------------
 
 Total Findings: 5
-  Critical: 1  😱
-  High: 2      😬
-  Medium: 1    😐
-  Low: 1       🤷
+  Critical: 1
+  High: 2
+  Medium: 1
+  Low: 1
+  Confirmed: 2
+  Potential: 1
+  Manual review: 2
 
 Overall Risk: CRITICAL - Immediate action required! (Translation: panic responsibly)
 ```
@@ -883,7 +893,7 @@ Overall Risk: CRITICAL - Immediate action required! (Translation: panic responsi
 Run the offline unit test suite:
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py"
+python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
 ## Project Structure

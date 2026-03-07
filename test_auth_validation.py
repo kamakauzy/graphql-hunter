@@ -71,24 +71,24 @@ MUTATION_QUERY = """mutation selfServeCreatePatient(
         }"""
 
 MUTATION_VARIABLES = {
-    "accessCode": "23771",
-    "address": "123 Street",
-    "city": "Doral",
+    "accessCode": "YOUR_ACCESS_CODE",
+    "address": "123 Example Street",
+    "city": "Example City",
     "country": "US",
     "dateOfBirth": "2005-01-01T13:10:20Z",
-    "email": "test@test.com",
-    "firstName": "NameyFakey",
+    "email": "your-test-user@example.com",
+    "firstName": "Example",
     "gender": "M",    
     "initialAppVersion": "3.0",
     "language": "EN",
-    "lastName": "LastFakey",
+    "lastName": "User",
     "notIntendedToTreatAcknowledgedAt": "2024-01-01T13:10:20Z",
-    "password": "meowmeow!!12354897",
-    "pdtUid": "BxgXBrgwswcX58wFNwhVfv",
-    "phone": "8005554123",
-    "postalCode": "33176",
+    "password": "YOUR_PASSWORD",
+    "pdtUid": "YOUR_PDT_UID",
+    "phone": "8005551234",
+    "postalCode": "12345",
     "safetyAcknowledgedAt": "2024-01-01T13:10:20Z",
-    "state": "Florida",
+    "state": "ExampleState",
     "termsAndPrivacyAcknowledgedAt": "2024-01-01T13:10:20Z"
 }
 
@@ -111,13 +111,13 @@ def test_auth_scenarios():
                 "Accept": "*/*",
                 "Postman-Token": "52cceb0e-c3e6-4366-a200-1c2e332223e3",
                 "Accept-Encoding": "gzip, deflate, br",
-                "Cookie": "csrftoken=deiPMVkXB6kpOhvH1ubIhfwWFkVyTbDE"
+                "Cookie": "csrftoken=YOUR_CSRF_TOKEN"
             }
         },
         {
             "name": "Cookie Only",
             "headers": {
-                "Cookie": "csrftoken=deiPMVkXB6kpOhvH1ubIhfwWFkVyTbDE"
+                "Cookie": "csrftoken=YOUR_CSRF_TOKEN"
             }
         },
         {

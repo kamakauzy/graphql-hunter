@@ -67,6 +67,12 @@ Import directly from cURL command strings:
 python graphql-hunter.py --import-curl "curl -X POST https://api.example.com/graphql -H 'Authorization: Bearer TOKEN' -d '{\"query\":\"{__typename}\"}'"
 ```
 
+You can also point `--import` at a text file containing a cURL command:
+
+```bash
+python graphql-hunter.py --import saved-request.txt --list-imported
+```
+
 ### 5. Raw HTTP Requests
 Parse raw HTTP request strings:
 
@@ -113,7 +119,7 @@ python graphql-hunter.py --import request.json \
 
 1. **Auto-detection**: The tool automatically detects file format based on extension
 2. **Postman Collections**: Recursively extracts all requests from folders and subfolders
-3. **Header Merging**: Imported headers are merged with CLI headers (CLI takes precedence)
+3. **Header Merging**: Imported headers are merged with CLI headers, and explicit CLI headers take precedence
 4. **Query Extraction**: Automatically extracts GraphQL queries and variables
 5. **Operation Names**: Detects operation names from queries
 
@@ -148,7 +154,7 @@ See `examples/` directory for:
 - Postman Collection v2.1 format only (v2.0 may work but not tested)
 - Only extracts GraphQL requests (other request types are skipped)
 - Variables in Postman collections must be in JSON format
-- cURL parsing may not handle all edge cases
+- cURL parsing focuses on common `-X`, `-H`, `-d` / `--data-raw`, and URL patterns
 
 ## Future Enhancements
 

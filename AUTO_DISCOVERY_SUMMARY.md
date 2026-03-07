@@ -28,7 +28,7 @@ python graphql-hunter.py --auto-discover notes.txt config.json request.yaml
 You provide notes like:
 ```
 email: user@example.com
-password: secret123
+password: YOUR_PASSWORD
 url: https://api.example.com/graphql/
 apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
@@ -52,8 +52,7 @@ apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ### Authentication
 - **tokenAuth** mutations (email/password)
 - JWT tokens in headers
-- OAuth patterns
-- API keys
+- Common token-header patterns
 
 ### Credentials
 - Email addresses
@@ -78,7 +77,7 @@ When discoveries are made, the tool automatically:
 1. **Sets URL** - Uses discovered URL if `-u` not provided
 2. **Configures Auth** - Sets `--auth-profile` if credentials found
 3. **Sets Auth Vars** - Automatically sets `--auth-var email=...` etc.
-4. **Adds Headers** - Adds `-H "Token: ..."` if tokens found
+4. **Adds Headers** - Preserves discovered header names such as `Authorization`, `Token`, or `X-API-Key`
 5. **Runs Scan** - Executes scan with discovered configuration
 
 ## Pattern Recognition
@@ -87,7 +86,7 @@ The tool recognizes patterns like:
 
 ```
 email: user@example.com          → Discovers email
-password: secret123               → Discovers password
+password: YOUR_PASSWORD           → Discovers password
 url: https://api.example.com/... → Discovers URL
 Token: eyJ...                     → Discovers JWT token
 apikey: eyJ...                    → Discovers API key
@@ -159,7 +158,7 @@ python graphql-hunter.py \
   -u https://api.example.com/graphql/ \
   --auth-profile token_auth \
   --auth-var email=user@example.com \
-  --auth-var password=secret123 \
+  --auth-var password=YOUR_PASSWORD \
   --validate-auth
 ```
 

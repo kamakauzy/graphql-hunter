@@ -72,7 +72,7 @@ Without Auth: HTTP 200, same response
 With Auth:    HTTP 200, "You do not have permission" error
 Without Auth: HTTP 200, "You do not have permission" error
 ```
-**Conclusion:** Authentication appears to be checked (permission errors indicate auth flow), but same error suggests:
+**Conclusion:** The current implementation treats this as **"auth appears to be working"** because permission errors imply the server is evaluating auth/authorization state, but it is still ambiguous and should be investigated:
 - Token may be expired/invalid
 - Token not required for this endpoint
 - Permission check happens regardless of auth
