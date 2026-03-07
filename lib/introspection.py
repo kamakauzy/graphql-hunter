@@ -165,14 +165,71 @@ class SchemaParser:
         
         mutations = self.get_mutations()
         for mutation in mutations:
-            args = mutation.get('args', [])
-            for arg in args:
-                arg_type = self._extract_type_name(arg.get('type', {}))
-                if arg_type == 'Upload' or 'Upload' in str(arg_type):
-                    upload_mutations.append(mutation)
-                    break
+            if self.find_upload_targets(mutation):
+                upload_mutations.append(mutation)
         
         return upload_mutations
+
+    def find_upload_targets(self, field: Dict) -> List[Dict]:
+        """Find upload-capable argument paths for a mutation/query field."""
+        targets = []
+        for arg in field.get('args', []) or []:
+            targets.extend(
+                self._collect_upload_targets(
+                    arg.get('type', {}),
+                    variable_path=f"variables.{arg.get('name')}",
+                    arg_name=arg.get('name'),
+                    visited=set(),
+                )
+            )
+        return targets
+
+    def _collect_upload_targets(
+        self,
+        type_def: Dict,
+        variable_path: str,
+        arg_name: str,
+        visited: Set[str],
+    ) -> List[Dict]:
+        """Recursively collect Upload scalar paths."""
+        if not type_def:
+            return []
+
+        kind = type_def.get('kind')
+        if kind == 'NON_NULL':
+            return self._collect_upload_targets(type_def.get('ofType', {}), variable_path, arg_name, visited)
+        if kind == 'LIST':
+            targets = self._collect_upload_targets(type_def.get('ofType', {}), f"{variable_path}.0", arg_name, visited)
+            for target in targets:
+                target['is_list'] = True
+            return targets
+
+        type_name = self._extract_type_name(type_def)
+        if type_name == 'Upload':
+            return [{
+                'variable_path': variable_path,
+                'arg_name': arg_name,
+                'type_name': type_name,
+                'is_list': False,
+            }]
+
+        resolved = self.types.get(type_name)
+        if not resolved or resolved.get('kind') != 'INPUT_OBJECT' or type_name in visited:
+            return []
+
+        visited = set(visited)
+        visited.add(type_name)
+        targets = []
+        for input_field in resolved.get('inputFields', []) or []:
+            targets.extend(
+                self._collect_upload_targets(
+                    input_field.get('type', {}),
+                    f"{variable_path}.{input_field.get('name')}",
+                    arg_name,
+                    visited,
+                )
+            )
+        return targets
 
     def type_signature(self, type_def: Dict) -> str:
         """Render a GraphQL type while preserving wrappers."""

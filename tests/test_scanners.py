@@ -8,6 +8,7 @@ sys.path.insert(0, str(ROOT / "scanners"))
 
 from xss_scanner import XSSScanner
 from injection_scanner import InjectionScanner
+from file_upload_scanner import FileUploadScanner
 
 
 SCHEMA = {
@@ -33,7 +34,16 @@ SCHEMA = {
         {
             "kind": "OBJECT",
             "name": "Mutation",
-            "fields": [],
+            "fields": [
+                {
+                    "name": "uploadPaste",
+                    "args": [
+                        {"name": "filename", "type": {"kind": "NON_NULL", "ofType": {"kind": "SCALAR", "name": "String"}}},
+                        {"name": "content", "type": {"kind": "NON_NULL", "ofType": {"kind": "SCALAR", "name": "String"}}},
+                    ],
+                    "type": {"kind": "OBJECT", "name": "UploadPasteResponse"},
+                }
+            ],
         },
         {
             "kind": "OBJECT",
@@ -47,6 +57,13 @@ SCHEMA = {
             "name": "LookupResponse",
             "fields": [
                 {"name": "message", "args": [], "type": {"kind": "SCALAR", "name": "String"}},
+            ],
+        },
+        {
+            "kind": "OBJECT",
+            "name": "UploadPasteResponse",
+            "fields": [
+                {"name": "result", "args": [], "type": {"kind": "SCALAR", "name": "String"}},
             ],
         },
         {"kind": "SCALAR", "name": "String"},
@@ -75,7 +92,7 @@ class _FakeClient:
         return self.schema["types"][0]["fields"]
 
     def get_mutations(self):
-        return []
+        return self.schema["types"][1]["fields"]
 
     def get_types(self):
         return self.schema["types"]
@@ -87,8 +104,12 @@ class _FakeClient:
         if operation_name and operation_name.startswith("AutoQueryLookup"):
             term = variables.get("term", "")
             if "'" in term or "UNION SELECT" in term or "WAITFOR" in term:
-                return {"errors": [{"message": "SQLSTATE syntax error near SELECT"}], "_status_code": 200}
-            return {"data": {"lookup": {"message": "ok"}}, "_status_code": 200}
+                if "WAITFOR" in term:
+                    return {"data": {"lookup": {"message": "ok"}}, "_status_code": 200, "_elapsed_seconds": 5.2}
+                return {"errors": [{"message": "SQLSTATE syntax error near SELECT"}], "_status_code": 200, "_elapsed_seconds": 0.11}
+            return {"data": {"lookup": {"message": "ok"}}, "_status_code": 200, "_elapsed_seconds": 0.1}
+        if operation_name and operation_name.startswith("AutoMutationUploadPaste"):
+            return {"data": {"uploadPaste": {"result": variables.get("content", "")}}, "_status_code": 200}
         return {"errors": [{"message": "Unexpected operation"}], "_status_code": 400}
 
 
@@ -116,6 +137,22 @@ class TestScanners(unittest.TestCase):
         self.assertEqual(finding["status"], "potential")
         self.assertEqual(finding["severity"], "HIGH")
         self.assertEqual(finding["classification"]["family"], "injection")
+
+    def test_injection_scanner_detects_time_based_sqli(self):
+        scanner = InjectionScanner(_FakeClient(), _DummyReporter(), {"enable_deep_injection": False})
+
+        findings = scanner.scan()
+
+        self.assertTrue(any("Time-Based" in finding["title"] for finding in findings))
+
+    def test_file_upload_scanner_detects_string_based_upload_surface(self):
+        scanner = FileUploadScanner(_FakeClient(), _DummyReporter(), {"safe_mode": True})
+
+        findings = scanner.scan()
+
+        self.assertTrue(findings)
+        self.assertEqual(findings[0]["scanner"], "file_upload")
+        self.assertIn(findings[0]["status"], {"potential", "manual_review"})
 
 
 if __name__ == "__main__":

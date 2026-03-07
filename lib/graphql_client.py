@@ -6,6 +6,7 @@ GraphQL Client - Handles all GraphQL requests and introspection
 import requests
 import json
 import time
+import copy
 from typing import Dict, List, Optional, Any, Mapping
 
 try:
@@ -76,11 +77,151 @@ class GraphQLClient:
         status = int(result.get('_status_code', 0) or 0)
         if status not in [200, 400]:
             raise Exception(f"Unexpected status code: {status}")
+
+    def _build_request_headers(
+        self,
+        extra_headers: Optional[Mapping[str, str]] = None,
+        bypass_auth: bool = False,
+        multipart: bool = False,
+    ) -> Dict[str, str]:
+        """Build request headers for a request."""
+        req_headers = dict(self.headers)
+        if (not bypass_auth) and self.auth_manager and hasattr(self.auth_manager, "get_request_headers"):
+            req_headers.update(self.auth_manager.get_request_headers())
+        if extra_headers:
+            req_headers.update({k: str(v) for k, v in extra_headers.items()})
+
+        if multipart:
+            req_headers = {
+                k: v for k, v in req_headers.items()
+                if str(k).lower() != 'content-type'
+            }
+        return req_headers
+
+    def _normalize_uploads(self, uploads: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Normalize upload specifications into a stable mapping."""
+        normalized = {}
+        for path, spec in (uploads or {}).items():
+            if isinstance(spec, tuple):
+                filename, content, content_type = (list(spec) + [None, None, None])[:3]
+                spec = {'filename': filename, 'content': content, 'content_type': content_type}
+            spec = dict(spec or {})
+            content = spec.get('content', b'')
+            if isinstance(content, str):
+                content = content.encode('utf-8')
+            normalized[path] = {
+                'filename': spec.get('filename') or 'upload.bin',
+                'content': content,
+                'content_type': spec.get('content_type') or 'application/octet-stream',
+            }
+        return normalized
+
+    def _set_value_at_path(self, target: Dict[str, Any], path: str, value: Any) -> None:
+        """Set nested values using paths like variables.input.file or variables.files.0."""
+        tokens = path.split('.')
+        cursor: Any = target
+        for token in tokens[:-1]:
+            if token.isdigit():
+                cursor = cursor[int(token)]
+            else:
+                cursor = cursor[token]
+        final = tokens[-1]
+        if final.isdigit():
+            cursor[int(final)] = value
+        else:
+            cursor[final] = value
+
+    def _build_multipart_request(
+        self,
+        payload: Dict[str, Any],
+        uploads: Dict[str, Dict[str, Any]],
+    ) -> tuple[Dict[str, str], Dict[str, tuple]]:
+        """Build GraphQL multipart request components."""
+        operations = copy.deepcopy(payload)
+        file_map = {}
+        files = {}
+
+        for index, (path, spec) in enumerate(uploads.items()):
+            file_key = str(index)
+            self._set_value_at_path(operations, path, None)
+            file_map[file_key] = [path]
+            files[file_key] = (
+                spec['filename'],
+                spec['content'],
+                spec['content_type'],
+            )
+
+        data = {
+            'operations': json.dumps(operations),
+            'map': json.dumps(file_map),
+        }
+        return data, files
+
+    def _post_graphql(
+        self,
+        payload: Dict[str, Any],
+        *,
+        extra_headers: Optional[Mapping[str, str]] = None,
+        bypass_auth: bool = False,
+        uploads: Optional[Dict[str, Any]] = None,
+    ) -> tuple[requests.Response, float]:
+        """POST a GraphQL request as JSON or multipart."""
+        multipart = bool(uploads)
+        req_headers = self._build_request_headers(extra_headers=extra_headers, bypass_auth=bypass_auth, multipart=multipart)
+
+        started = time.perf_counter()
+        if multipart:
+            normalized_uploads = self._normalize_uploads(uploads)
+            data, files = self._build_multipart_request(payload, normalized_uploads)
+            response = self.session.post(
+                self.url,
+                headers=req_headers,
+                data=data,
+                files=files,
+                proxies=self.proxies,
+                timeout=self.timeout,
+                verify=self.verify
+            )
+        else:
+            response = self.session.post(
+                self.url,
+                headers=req_headers,
+                json=payload,
+                proxies=self.proxies,
+                timeout=self.timeout,
+                verify=self.verify
+            )
+        elapsed = time.perf_counter() - started
+        return response, elapsed
+
+    def _parse_response(self, response: requests.Response, elapsed_seconds: float) -> Dict[str, Any]:
+        """Parse an HTTP response into a GraphQL-style result dict."""
+        if self.verbose:
+            print(f"[DEBUG] Response Status: {response.status_code}")
+            body = response.text[:1000]
+            if _redact_text:
+                body = _redact_text(body)
+            print(f"[DEBUG] Response Body: {body}")
+
+        try:
+            result = response.json()
+        except json.JSONDecodeError:
+            result = {
+                'errors': [{'message': f'Non-JSON response: {response.text[:200]}'}],
+                'status_code': response.status_code,
+                'raw_response': response.text
+            }
+
+        result['_status_code'] = response.status_code
+        result['_headers'] = dict(response.headers)
+        result['_elapsed_seconds'] = elapsed_seconds
+        return result
     
     def query(self, query: str, variables: Optional[Dict] = None, 
               operation_name: Optional[str] = None,
               extra_headers: Optional[Mapping[str, str]] = None,
-              bypass_auth: bool = False) -> Dict:
+              bypass_auth: bool = False,
+              uploads: Optional[Dict[str, Any]] = None) -> Dict:
         """
         Execute a GraphQL query
         
@@ -114,51 +255,36 @@ class GraphQLClient:
                 debug_headers.update({k: str(v) for k, v in extra_headers.items()})
             if self.auth_manager and hasattr(self.auth_manager, "redact_headers"):
                 debug_headers = self.auth_manager.redact_headers(debug_headers)
+            if uploads:
+                debug_headers = {
+                    k: v for k, v in debug_headers.items()
+                    if str(k).lower() != 'content-type'
+                }
             print(f"[DEBUG] Headers: {json.dumps(debug_headers, indent=2)}")
             payload_for_debug = payload
             if _redact_obj:
                 payload_for_debug = _redact_obj(payload_for_debug)
             print(f"[DEBUG] Payload: {json.dumps(payload_for_debug, indent=2)}")
+            if uploads:
+                upload_debug = {
+                    path: {
+                        'filename': spec.get('filename') if isinstance(spec, dict) else spec[0],
+                        'content_type': spec.get('content_type') if isinstance(spec, dict) else (spec[2] if len(spec) > 2 else None),
+                    }
+                    for path, spec in uploads.items()
+                }
+                print(f"[DEBUG] Uploads: {json.dumps(upload_debug, indent=2)}")
         
         try:
             if (not bypass_auth) and self.auth_manager and hasattr(self.auth_manager, "ensure_prepared"):
                 self.auth_manager.ensure_prepared(self)
-
-            req_headers = dict(self.headers)
-            if (not bypass_auth) and self.auth_manager and hasattr(self.auth_manager, "get_request_headers"):
-                req_headers.update(self.auth_manager.get_request_headers())
-            if extra_headers:
-                req_headers.update({k: str(v) for k, v in extra_headers.items()})
-
-            response = self.session.post(
-                self.url,
-                headers=req_headers,
-                json=payload,
-                proxies=self.proxies,
-                timeout=self.timeout,
-                verify=self.verify
+            response, elapsed = self._post_graphql(
+                payload,
+                extra_headers=extra_headers,
+                bypass_auth=bypass_auth,
+                uploads=uploads,
             )
-            
-            if self.verbose:
-                print(f"[DEBUG] Response Status: {response.status_code}")
-                body = response.text[:1000]
-                if _redact_text:
-                    body = _redact_text(body)
-                print(f"[DEBUG] Response Body: {body}")
-            
-            # Try to parse JSON
-            try:
-                result = response.json()
-            except json.JSONDecodeError:
-                result = {
-                    'errors': [{'message': f'Non-JSON response: {response.text[:200]}'}],
-                    'status_code': response.status_code,
-                    'raw_response': response.text
-                }
-            
-            # Add metadata
-            result['_status_code'] = response.status_code
-            result['_headers'] = dict(response.headers)
+            result = self._parse_response(response, elapsed)
 
             # Refresh + retry once on auth failures
             if (not bypass_auth) and self.auth_manager and hasattr(self.auth_manager, "maybe_refresh_and_retry"):
@@ -168,31 +294,13 @@ class GraphQLClient:
                     should_retry = False
 
                 if should_retry:
-                    # Rebuild headers (fresh token/cookies/CSRF)
-                    req_headers = dict(self.headers)
-                    if hasattr(self.auth_manager, "get_request_headers"):
-                        req_headers.update(self.auth_manager.get_request_headers())
-                    if extra_headers:
-                        req_headers.update({k: str(v) for k, v in extra_headers.items()})
-
-                    response = self.session.post(
-                        self.url,
-                        headers=req_headers,
-                        json=payload,
-                        proxies=self.proxies,
-                        timeout=self.timeout,
-                        verify=self.verify
+                    response, elapsed = self._post_graphql(
+                        payload,
+                        extra_headers=extra_headers,
+                        bypass_auth=bypass_auth,
+                        uploads=uploads,
                     )
-                    try:
-                        result = response.json()
-                    except json.JSONDecodeError:
-                        result = {
-                            'errors': [{'message': f'Non-JSON response: {response.text[:200]}'}],
-                            'status_code': response.status_code,
-                            'raw_response': response.text
-                        }
-                    result['_status_code'] = response.status_code
-                    result['_headers'] = dict(response.headers)
+                    result = self._parse_response(response, elapsed)
 
             return result
             

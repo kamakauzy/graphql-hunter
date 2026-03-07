@@ -4,6 +4,9 @@ Utility functions for GraphQL Hunter
 """
 
 import json
+import itertools
+import math
+import statistics
 import re
 import shlex
 from typing import Any, Dict, List, Optional
@@ -214,6 +217,56 @@ def detect_stack_trace(text: str) -> bool:
         if re.search(pattern, text, re.MULTILINE | re.IGNORECASE):
             return True
     return False
+
+
+def parse_expected_delay(payload: str, default: float = 5.0) -> float:
+    """Extract expected delay seconds from common SQL timing payloads."""
+    if not payload:
+        return default
+
+    waitfor = re.search(r"waitfor\s+delay\s+'(\d+):(\d+):(\d+)'", payload, re.IGNORECASE)
+    if waitfor:
+        hours, minutes, seconds = map(int, waitfor.groups())
+        return float(hours * 3600 + minutes * 60 + seconds)
+
+    sleep = re.search(r"(?:pg_)?sleep\((\d+(?:\.\d+)?)\)", payload, re.IGNORECASE)
+    if sleep:
+        return float(sleep.group(1))
+
+    return default
+
+
+def median_abs_deviation(samples: List[float]) -> float:
+    """Compute the median absolute deviation (MAD) for timing samples."""
+    if not samples:
+        return 0.0
+    median = statistics.median(samples)
+    return statistics.median([abs(sample - median) for sample in samples])
+
+
+def exact_permutation_pvalue(baseline: List[float], payload: List[float]) -> float:
+    """One-sided exact permutation p-value for a timing shift."""
+    if not baseline or not payload:
+        return 1.0
+
+    observed = statistics.mean(payload) - statistics.mean(baseline)
+    combined = list(baseline) + list(payload)
+    baseline_size = len(baseline)
+    more_extreme = 0
+    total = 0
+
+    for baseline_indexes in itertools.combinations(range(len(combined)), baseline_size):
+        baseline_set = set(baseline_indexes)
+        perm_baseline = [combined[i] for i in baseline_indexes]
+        perm_payload = [combined[i] for i in range(len(combined)) if i not in baseline_set]
+        delta = statistics.mean(perm_payload) - statistics.mean(perm_baseline)
+        total += 1
+        if delta >= observed - 1e-9:
+            more_extreme += 1
+
+    if total == 0:
+        return 1.0
+    return more_extreme / total
 
 
 def get_field_count_in_query(query: str) -> int:

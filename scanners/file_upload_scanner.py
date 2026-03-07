@@ -9,10 +9,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
 from graphql_client import GraphQLClient
 from reporter import Reporter
-from utils import create_finding
+from utils import create_finding, extract_error_messages
+from introspection import SchemaParser
 from typing import List, Dict
-import os
-import tempfile
+import copy
 
 
 class FileUploadScanner:
@@ -56,7 +56,7 @@ class FileUploadScanner:
         
         # Test each upload mutation
         for mutation in upload_mutations:
-            mutation_name = mutation.get('name')
+            mutation_name = mutation['mutation'].get('name')
             self.reporter.print_info(f"Testing {mutation_name} for file upload vulnerabilities...")
             
             findings.extend(self._test_path_traversal(mutation))
@@ -67,41 +67,126 @@ class FileUploadScanner:
         return findings
     
     def _detect_upload_mutations(self) -> List[Dict]:
-        """Detect mutations with Upload type arguments"""
+        """Detect mutations with Upload type args or upload-like string inputs."""
         mutations = self.client.get_mutations()
         if not mutations:
             return []
-        
+
+        parser = SchemaParser(self.client.schema)
         upload_mutations = []
-        
+
         for mutation in mutations:
-            args = mutation.get('args', [])
-            for arg in args:
-                arg_type = self._extract_type_name(arg.get('type', {}))
-                # Check for Upload scalar type
-                if arg_type == 'Upload' or 'Upload' in str(arg_type):
-                    upload_mutations.append(mutation)
-                    break
-        
+            upload_targets = parser.find_upload_targets(mutation)
+            if upload_targets:
+                upload_mutations.append({
+                    'mutation': mutation,
+                    'transport': 'multipart',
+                    'upload_targets': upload_targets,
+                    'parser': parser,
+                })
+                continue
+
+            arg_names = {arg.get('name', '').lower(): arg for arg in mutation.get('args', [])}
+            mutation_name = mutation.get('name', '').lower()
+            has_filename = any(name in arg_names for name in {'filename', 'file', 'path'})
+            has_content = any(name in arg_names for name in {'content', 'text', 'data', 'body'})
+            if has_filename and has_content and any(keyword in mutation_name for keyword in {'upload', 'import', 'file', 'paste'}):
+                upload_mutations.append({
+                    'mutation': mutation,
+                    'transport': 'string_upload',
+                    'filename_arg': next(name for name in {'filename', 'file', 'path'} if name in arg_names),
+                    'content_arg': next(name for name in {'content', 'text', 'data', 'body'} if name in arg_names),
+                    'parser': parser,
+                })
+
         return upload_mutations
+
+    def _build_candidate_operation(self, candidate: Dict, overrides: Dict | None = None) -> Dict | None:
+        """Build a schema-valid operation for an upload candidate."""
+        parser = candidate['parser']
+        built = parser.build_operation(candidate['mutation'], operation_kind='mutation', overrides=overrides or {})
+        if not built.get('testable'):
+            return None
+        return built
+
+    def _build_upload_specs(
+        self,
+        candidate: Dict,
+        *,
+        target_path: str | None = None,
+        filename: str = "test.txt",
+        content: bytes | str = b"upload-test",
+        content_type: str = "text/plain",
+    ) -> Dict[str, Dict]:
+        """Build uploads mapping, setting benign files for sibling upload slots."""
+        specs = {}
+        for target in candidate.get('upload_targets', []):
+            specs[target['variable_path']] = {
+                'filename': filename if target_path is None or target['variable_path'] == target_path else 'benign.txt',
+                'content': content if target_path is None or target['variable_path'] == target_path else b'benign',
+                'content_type': content_type,
+            }
+        return specs
+
+    def _execute_candidate_probe(
+        self,
+        candidate: Dict,
+        *,
+        filename: str,
+        content: bytes | str,
+        content_type: str = "text/plain",
+    ) -> Dict:
+        """Execute a live upload probe for multipart or string-based upload surfaces."""
+        built = self._build_candidate_operation(candidate)
+        if not built:
+            return {'_untestable': True, 'errors': [{'message': 'Unable to auto-build upload mutation'}]}
+
+        variables = copy.deepcopy(built.get('variables') or {})
+        if candidate['transport'] == 'multipart':
+            for target in candidate.get('upload_targets', []):
+                self._set_value_at_path(variables, target['variable_path'].replace('variables.', ''), None)
+            uploads = self._build_upload_specs(candidate, filename=filename, content=content, content_type=content_type)
+            return self.client.query(
+                built['query'],
+                variables=variables,
+                operation_name=built.get('operation_name'),
+                uploads=uploads,
+            )
+
+        filename_key = candidate['filename_arg']
+        content_key = candidate['content_arg']
+        variables[filename_key] = filename
+        variables[content_key] = content.decode('utf-8') if isinstance(content, bytes) else content
+        return self.client.query(
+            built['query'],
+            variables=variables,
+            operation_name=built.get('operation_name'),
+        )
+
+    def _set_value_at_path(self, obj: Dict, path: str, value) -> None:
+        """Set nested dict/list path values using dotted notation."""
+        tokens = path.split('.')
+        cursor = obj
+        for token in tokens[:-1]:
+            if token.isdigit():
+                cursor = cursor[int(token)]
+            else:
+                cursor = cursor[token]
+        final = tokens[-1]
+        if final.isdigit():
+            cursor[int(final)] = value
+        else:
+            cursor[final] = value
+
+    def _looks_like_successful_upload(self, result: Dict) -> bool:
+        """Best-effort determination that an upload mutation was accepted."""
+        return bool(result.get('data')) and not result.get('errors')
     
     def _test_path_traversal(self, mutation: Dict) -> List[Dict]:
         """Test for path traversal vulnerabilities"""
         findings = []
         
-        mutation_name = mutation.get('name')
-        args = mutation.get('args', [])
-        
-        # Find Upload argument
-        upload_arg = None
-        for arg in args:
-            arg_type = self._extract_type_name(arg.get('type', {}))
-            if arg_type == 'Upload' or 'Upload' in str(arg_type):
-                upload_arg = arg
-                break
-        
-        if not upload_arg:
-            return findings
+        mutation_name = mutation['mutation'].get('name')
         
         # Path traversal payloads
         path_traversal_payloads = [
@@ -112,23 +197,47 @@ class FileUploadScanner:
             '..%2F..%2F..%2Fetc%2Fpasswd',
         ]
         
-        # Note: Actual file upload testing requires multipart/form-data
-        # This is a detection and recommendation finding
+        for payload in path_traversal_payloads[:3]:
+            result = self._execute_candidate_probe(mutation, filename=payload, content="upload-test")
+            if result.get('_untestable'):
+                break
+            if self._looks_like_successful_upload(result):
+                findings.append(create_finding(
+                    title="Potential Path Traversal in File Upload",
+                    severity="HIGH",
+                    description=f"Upload-like mutation {mutation_name} accepted a dangerous filename payload ({payload}) without rejecting it. This suggests path traversal protections may be missing or weak.",
+                    impact="If upload paths are not sanitized, attackers may write files outside the intended upload directory, overwrite application files, or plant malicious content in accessible locations.",
+                    remediation="Normalize and validate filenames server-side, disallow directory separators and dot-dot sequences, generate server-side filenames, and store uploads outside executable or sensitive directories.",
+                    cwe="CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+                    scanner="file_upload",
+                    classification={'kind': 'vulnerability', 'family': 'upload'},
+                    confidence={'level': 'medium', 'reasons': ['Live upload probe with a traversal-style filename was accepted successfully']},
+                    evidence={
+                        'mutation': mutation_name,
+                        'payload': payload,
+                        'transport': mutation['transport'],
+                        'response': result.get('data')
+                    },
+                    manual_verification_required=True,
+                    poc=f"Test {mutation_name} with filename={payload}",
+                    url=self.client.url
+                ))
+                return findings
+
         findings.append(create_finding(
             title="File Upload Mutation Detected",
             severity="INFO",
-            description=f"Mutation {mutation_name} accepts file uploads. Manual testing recommended for path traversal, file type validation, and size limits.",
-            impact="File uploads can be vulnerable to: 1) Path traversal allowing access to sensitive files, 2) Malicious file execution if files are stored in web-accessible directories, 3) DoS via oversized files, 4) Filename injection attacks.",
-            remediation="Implement: 1) Strict filename validation (whitelist allowed characters), 2) Path sanitization to prevent directory traversal, 3) File type validation (check MIME type, not just extension), 4) File size limits, 5) Store uploads outside web root, 6) Scan uploaded files for malware, 7) Use unique, random filenames.",
+            description=f"Mutation {mutation_name} accepts file uploads or upload-like inputs. Live probing did not conclusively demonstrate path traversal, so manual testing is still recommended.",
+            impact="File uploads can be vulnerable to path traversal, malicious file execution, oversized upload DoS, and filename injection attacks.",
+            remediation="Implement strict filename validation, path normalization, file type validation, size limits, and server-side generated filenames.",
             cwe="CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
             scanner="file_upload",
             classification={'kind': 'manual_review', 'family': 'upload'},
-            confidence={'level': 'low', 'reasons': ['Schema confirmed a file upload surface, but multipart upload exploitability was not exercised']},
+            confidence={'level': 'low', 'reasons': ['Upload surface was found, but traversal exploitability was not conclusively proven by automated probing']},
             manual_verification_required=True,
             evidence={
                 'mutation': mutation_name,
-                'upload_argument': upload_arg.get('name'),
-                'manual_testing_required': True,
+                'transport': mutation['transport'],
                 'test_payloads': path_traversal_payloads
             },
             poc=f"Test {mutation_name} with filenames: {', '.join(path_traversal_payloads[:3])}",
@@ -141,39 +250,60 @@ class FileUploadScanner:
         """Test for oversized file upload DoS"""
         findings = []
         
-        mutation_name = mutation.get('name')
+        mutation_name = mutation['mutation'].get('name')
         
         # Check safe mode
         if self.config.get('safe_mode', False):
             self.reporter.print_info("Safe mode enabled, skipping oversized file tests")
             return findings
         
-        # Recommend testing with large files
-        large_file_sizes = [
-            100 * 1024 * 1024,  # 100MB
-            500 * 1024 * 1024,  # 500MB
-            1024 * 1024 * 1024,  # 1GB
-        ]
-        
-        findings.append(create_finding(
-            title="File Upload Size Limit Testing Recommended",
-            severity="INFO",
-            description=f"Mutation {mutation_name} accepts file uploads. Test with oversized files to verify size limits are enforced.",
-            impact="Without proper size limits, attackers can upload extremely large files to consume server storage and memory, potentially causing DoS. Large file processing can also cause timeouts or resource exhaustion.",
-            remediation="Implement strict file size limits (e.g., 10-50MB for images, 100MB for documents). Reject files exceeding limits before processing. Consider streaming uploads for large files. Monitor upload sizes and rate limit large uploads.",
-            cwe="CWE-400: Uncontrolled Resource Consumption",
-            scanner="file_upload",
-            classification={'kind': 'manual_review', 'family': 'upload'},
-            confidence={'level': 'low', 'reasons': ['Upload surface exists, but oversized multipart handling was not exercised automatically']},
-            manual_verification_required=True,
-            evidence={
-                'mutation': mutation_name,
-                'recommended_test_sizes_mb': [size // (1024 * 1024) for size in large_file_sizes],
-                'manual_testing_required': True
-            },
-            poc=f"Test {mutation_name} with files of sizes: {', '.join([f'{s//(1024*1024)}MB' for s in large_file_sizes])}",
-            url=self.client.url
-        ))
+        oversize_bytes = self.max_file_size + 1
+        result = self._execute_candidate_probe(
+            mutation,
+            filename="oversized.txt",
+            content=b"A" * oversize_bytes,
+            content_type="text/plain",
+        )
+
+        if self._looks_like_successful_upload(result):
+            findings.append(create_finding(
+                title="Potential Missing File Size Limit",
+                severity="MEDIUM",
+                description=f"Upload-like mutation {mutation_name} accepted a payload slightly larger than the configured maximum upload test size ({self.max_file_size} bytes).",
+                impact="Missing or weak size limits can enable storage exhaustion, memory pressure, and degraded service performance during large uploads.",
+                remediation="Enforce hard server-side file size limits before processing uploaded content and reject oversized files as early as possible.",
+                cwe="CWE-400: Uncontrolled Resource Consumption",
+                scanner="file_upload",
+                classification={'kind': 'hardening_gap', 'family': 'upload'},
+                confidence={'level': 'medium', 'reasons': ['Oversized upload probe completed successfully instead of being rejected']},
+                evidence={
+                    'mutation': mutation_name,
+                    'tested_size_bytes': oversize_bytes,
+                    'configured_threshold_bytes': self.max_file_size
+                },
+                manual_verification_required=True,
+                poc=f"Test {mutation_name} with file size {oversize_bytes} bytes",
+                url=self.client.url
+            ))
+        else:
+            findings.append(create_finding(
+                title="File Upload Size Limit Testing Recommended",
+                severity="INFO",
+                description=f"Mutation {mutation_name} accepts file uploads. Oversized probing did not produce a clear result, so size-limit validation should still be reviewed manually.",
+                impact="Without proper size limits, attackers can upload extremely large files to consume server storage and memory, potentially causing DoS.",
+                remediation="Implement strict file size limits, reject oversized payloads early, and monitor upload endpoints for abnormal body sizes.",
+                cwe="CWE-400: Uncontrolled Resource Consumption",
+                scanner="file_upload",
+                classification={'kind': 'manual_review', 'family': 'upload'},
+                confidence={'level': 'low', 'reasons': ['Automated oversized upload probe was inconclusive']},
+                manual_verification_required=True,
+                evidence={
+                    'mutation': mutation_name,
+                    'tested_size_bytes': oversize_bytes
+                },
+                poc=f"Test {mutation_name} with file size {oversize_bytes} bytes",
+                url=self.client.url
+            ))
         
         return findings
     
@@ -181,7 +311,7 @@ class FileUploadScanner:
         """Test for malicious file extension vulnerabilities"""
         findings = []
         
-        mutation_name = mutation.get('name')
+        mutation_name = mutation['mutation'].get('name')
         
         # Malicious extensions to test
         malicious_extensions = [
@@ -190,21 +320,46 @@ class FileUploadScanner:
             '.js', '.html', '.htm', '.svg',
         ]
         
+        for extension in malicious_extensions[:5]:
+            filename = f"payload{extension}"
+            result = self._execute_candidate_probe(mutation, filename=filename, content="upload-test")
+            if self._looks_like_successful_upload(result):
+                findings.append(create_finding(
+                    title="Potential Dangerous File Type Upload",
+                    severity="MEDIUM",
+                    description=f"Upload-like mutation {mutation_name} accepted a potentially dangerous filename extension ({extension}) without rejecting it.",
+                    impact="If uploaded files are later served or executed, accepting dangerous file types can enable remote code execution, HTML/script injection, or stored client-side attacks.",
+                    remediation="Use an allowlist of permitted file types, validate MIME types and magic bytes, reject double extensions, and store uploads outside executable or public web paths.",
+                    cwe="CWE-434: Unrestricted Upload of File with Dangerous Type",
+                    scanner="file_upload",
+                    classification={'kind': 'hardening_gap', 'family': 'upload'},
+                    confidence={'level': 'medium', 'reasons': ['Live upload probe with a dangerous extension was accepted successfully']},
+                    evidence={
+                        'mutation': mutation_name,
+                        'filename': filename,
+                        'transport': mutation['transport'],
+                        'response': result.get('data')
+                    },
+                    manual_verification_required=True,
+                    poc=f"Test {mutation_name} with filename={filename}",
+                    url=self.client.url
+                ))
+                return findings
+
         findings.append(create_finding(
             title="File Upload Extension Validation Testing Recommended",
             severity="INFO",
-            description=f"Mutation {mutation_name} accepts file uploads. Test with malicious file extensions to verify proper validation.",
-            impact="If file type validation is insufficient, attackers may upload executable files or scripts that could be executed on the server, leading to remote code execution. Double extension attacks (e.g., 'file.php.jpg') may bypass validation.",
-            remediation="Implement strict file type validation: 1) Check MIME type (not just extension), 2) Use allowlist of allowed file types, 3) Scan file contents (magic bytes), 4) Reject files with double extensions, 5) Rename uploaded files to safe extensions, 6) Store uploads outside web-accessible directories.",
+            description=f"Mutation {mutation_name} accepts file uploads. Dangerous file extension probing was inconclusive, so extension and MIME validation should still be reviewed manually.",
+            impact="If file type validation is insufficient, attackers may upload executable files or scripts that could be executed on the server.",
+            remediation="Implement strict file type validation, reject double extensions, validate magic bytes, and avoid serving uploaded files from executable or public directories.",
             cwe="CWE-434: Unrestricted Upload of File with Dangerous Type",
             scanner="file_upload",
             classification={'kind': 'manual_review', 'family': 'upload'},
-            confidence={'level': 'low', 'reasons': ['Upload surface exists, but file-type enforcement was not exercised automatically']},
+            confidence={'level': 'low', 'reasons': ['Automated dangerous-extension upload probes did not conclusively prove acceptance or rejection']},
             manual_verification_required=True,
             evidence={
                 'mutation': mutation_name,
-                'malicious_extensions': malicious_extensions,
-                'manual_testing_required': True
+                'malicious_extensions': malicious_extensions
             },
             poc=f"Test {mutation_name} with files having extensions: {', '.join(malicious_extensions[:5])}",
             url=self.client.url
@@ -216,7 +371,7 @@ class FileUploadScanner:
         """Test for filename injection vulnerabilities"""
         findings = []
         
-        mutation_name = mutation.get('name')
+        mutation_name = mutation['mutation'].get('name')
         
         # Filename injection payloads
         injection_payloads = [
@@ -230,21 +385,44 @@ class FileUploadScanner:
             'file.txt && cat /etc/passwd',
         ]
         
+        for payload in injection_payloads[:3]:
+            result = self._execute_candidate_probe(mutation, filename=payload, content="upload-test")
+            if self._looks_like_successful_upload(result):
+                findings.append(create_finding(
+                    title="Potential Filename Injection Vulnerability",
+                    severity="LOW",
+                    description=f"Upload-like mutation {mutation_name} accepted a suspicious filename payload ({payload}) without rejecting it.",
+                    impact="Unsanitized filenames can enable command injection, stored XSS, path traversal, or downstream parser confusion depending on how filenames are processed or displayed.",
+                    remediation="Whitelist safe filename characters, strip or normalize control characters and separators, and never use user-provided filenames directly in shell commands or HTML output.",
+                    cwe="CWE-78: OS Command Injection",
+                    scanner="file_upload",
+                    classification={'kind': 'hardening_gap', 'family': 'upload'},
+                    confidence={'level': 'low', 'reasons': ['Live upload probe accepted a suspicious filename, but exploitability depends on downstream processing']},
+                    evidence={
+                        'mutation': mutation_name,
+                        'filename_payload': payload,
+                        'transport': mutation['transport']
+                    },
+                    manual_verification_required=True,
+                    poc=f"Test {mutation_name} with filename={payload}",
+                    url=self.client.url
+                ))
+                return findings
+
         findings.append(create_finding(
             title="Filename Injection Testing Recommended",
             severity="LOW",
-            description=f"Mutation {mutation_name} accepts file uploads. Test with malicious filenames to verify proper sanitization.",
-            impact="Filename injection can allow: 1) Command injection if filenames are used in shell commands, 2) Path traversal if filenames are not sanitized, 3) XSS if filenames are displayed without encoding.",
-            remediation="Sanitize filenames: 1) Remove or encode special characters, 2) Limit filename length, 3) Use whitelist of allowed characters, 4) Generate unique filenames server-side, 5) Never use user-provided filenames in shell commands.",
+            description=f"Mutation {mutation_name} accepts file uploads. Automated suspicious-filename probing was inconclusive, so filename sanitization should still be reviewed manually.",
+            impact="Filename injection can allow command injection, path traversal, or stored XSS if filenames are processed unsafely.",
+            remediation="Sanitize filenames, limit filename length, whitelist safe characters, and generate server-side names instead of trusting user input.",
             cwe="CWE-78: OS Command Injection",
             scanner="file_upload",
             classification={'kind': 'manual_review', 'family': 'upload'},
-            confidence={'level': 'low', 'reasons': ['Upload surface exists, but filename handling was not exercised automatically']},
+            confidence={'level': 'low', 'reasons': ['Automated suspicious-filename probes did not conclusively prove unsafe handling']},
             manual_verification_required=True,
             evidence={
                 'mutation': mutation_name,
-                'injection_payloads': injection_payloads,
-                'manual_testing_required': True
+                'injection_payloads': injection_payloads
             },
             poc=f"Test {mutation_name} with filenames: {', '.join(injection_payloads[:3])}",
             url=self.client.url
