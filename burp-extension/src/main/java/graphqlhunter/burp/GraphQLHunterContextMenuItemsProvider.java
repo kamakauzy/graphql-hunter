@@ -30,49 +30,45 @@ public final class GraphQLHunterContextMenuItemsProvider implements ContextMenuI
     @Override
     public List<Component> provideMenuItems(ContextMenuEvent event)
     {
+        Optional<ScanRequest> imported = parseFromEvent(event);
+        if (imported.isEmpty())
+        {
+            return List.of();
+        }
+
         JMenuItem item = new JMenuItem("Send GraphQL request to GraphQL Hunter");
-        item.addActionListener(actionEvent -> importFromEvent(event));
+        item.addActionListener(actionEvent -> SwingUtilities.invokeLater(() -> importer.accept(imported.get())));
         return List.of(item);
     }
 
-    private void importFromEvent(ContextMenuEvent event)
+    private Optional<ScanRequest> parseFromEvent(ContextMenuEvent event)
     {
         try
         {
             Optional<?> maybeEditor = event.messageEditorRequestResponse();
             if (maybeEditor.isEmpty())
             {
-                logger.warn("GraphQL Hunter import was invoked without an HTTP message editor context.");
-                return;
+                return Optional.empty();
             }
 
             Object editorContext = maybeEditor.get();
-            HttpRequest request = (HttpRequest) editorContext.getClass().getMethod("requestResponse").invoke(editorContext).getClass().getMethod("request").invoke(
-                editorContext.getClass().getMethod("requestResponse").invoke(editorContext)
-            );
+            Object requestResponse = editorContext.getClass().getMethod("requestResponse").invoke(editorContext);
+            HttpRequest request = (HttpRequest) requestResponse.getClass().getMethod("request").invoke(requestResponse);
             Map<String, String> headers = new LinkedHashMap<>();
             request.headers().forEach(header -> headers.put(header.name(), header.value()));
 
-            Optional<ScanRequest> imported = GraphQLHunterCore.parseRequest(
+            return GraphQLHunterCore.parseRequest(
                 "burp-selection",
                 request.url(),
                 request.method(),
                 headers,
                 request.bodyToString()
             );
-
-            if (imported.isEmpty())
-            {
-                logger.warn("Selected request does not look like a GraphQL request body.");
-                return;
-            }
-
-            SwingUtilities.invokeLater(() -> importer.accept(imported.get()));
-            logger.info("Imported GraphQL request from Burp context menu.");
         }
         catch (Exception exception)
         {
-            logger.error("Unable to import GraphQL request from Burp.", exception);
+            logger.error("Unable to inspect Burp context menu request.", exception);
+            return Optional.empty();
         }
     }
 }
