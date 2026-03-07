@@ -1,0 +1,124 @@
+# Auth workflow profiles for GraphQL Hunter Burp extension.
+# This mirrors the Python CLI auth config model.
+
+profiles:
+  api_key:
+    type: api_key
+    header_name: x-api-key
+    var: api_key
+
+  bearer:
+    type: bearer
+    header_name: Authorization
+    var: access_token
+    prefix: "Bearer"
+
+  oauth2_client_credentials:
+    type: oauth2_client_credentials
+    token_url: "https://issuer.example.com/oauth/token"
+    auth_method: body
+    client_id_var: client_id
+    client_secret_var: client_secret
+    scope_var: scope
+    audience_var: audience
+
+  oauth2_refresh_token:
+    type: oauth2_refresh_token
+    token_url: "https://issuer.example.com/oauth/token"
+    auth_method: body
+    client_id_var: client_id
+    client_secret_var: client_secret
+    refresh_token_var: refresh_token
+    scope_var: scope
+
+  oauth2_auth_code:
+    type: oauth2_auth_code
+    authorize_url: "https://issuer.example.com/authorize"
+    token_url: "https://issuer.example.com/oauth/token"
+    redirect_uri: "http://localhost/dummy-callback"
+    code_var: oauth_code
+    auth_method: body
+    client_id_var: client_id
+    client_secret_var: client_secret
+    scope_var: scope
+
+  oauth2_device_code:
+    type: oauth2_device_code
+    device_authorization_url: "https://issuer.example.com/oauth/device/code"
+    token_url: "https://issuer.example.com/oauth/token"
+    client_id_var: client_id
+    scope_var: scope
+
+  cookie_session_with_csrf:
+    type: cookie_session
+    login_steps:
+      - type: http
+        method: POST
+        url: "https://app.example.com/login"
+        headers:
+          Content-Type: "application/json"
+        json:
+          username: "{{username}}"
+          password: "{{password}}"
+      - type: http
+        method: GET
+        url: "https://app.example.com/csrf"
+        extract:
+          - var: csrf_token
+            from: header
+            name: x-csrf-token
+    csrf:
+      header_name: x-csrf-token
+      var: csrf_token
+
+  scripted_example:
+    type: scripted
+    acquire_steps:
+      - type: graphql
+        query: |
+          mutation Login($u: String!, $p: String!) {
+            login(username: $u, password: $p) {
+              accessToken
+            }
+          }
+        variables:
+          u: "{{username}}"
+          p: "{{password}}"
+        extract:
+          - var: access_token
+            from: json
+            path: data.login.accessToken
+    inject_headers:
+      Authorization: "Bearer {{access_token}}"
+    sensitive_headers:
+      - Authorization
+
+  token_auth:
+    type: scripted
+    acquire_steps:
+      - type: graphql
+        query: |
+          mutation TokenAuth($email: String!, $password: String!) {
+            tokenAuth(email: $email, password: $password) {
+              token
+              refreshToken
+              user {
+                uid
+                email
+              }
+            }
+          }
+        variables:
+          email: "{{email}}"
+          password: "{{password}}"
+        extract:
+          - var: access_token
+            from: json
+            path: data.tokenAuth.token
+          - var: refresh_token
+            from: json
+            path: data.tokenAuth.refreshToken
+    inject_headers:
+      Token: "{{access_token}}"
+    sensitive_headers:
+      - Token

@@ -24,6 +24,7 @@ dependencies {
     implementation platform('com.fasterxml.jackson:jackson-bom:2.20.0')
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
 
     testImplementation platform('org.junit:junit-bom:6.0.1')
     testImplementation 'org.junit.jupiter:junit-jupiter'

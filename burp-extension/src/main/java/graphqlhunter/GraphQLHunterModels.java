@@ -121,5 +121,30 @@ public final class GraphQLHunterModels
     {
         public ScanRequest lastRequest = new ScanRequest();
         public String scanProfile = ScanProfile.STANDARD.name();
+        public ScanSettings scanSettings = new ScanSettings();
+    }
+
+    public static final class ScanSettings
+    {
+        public String profileName = ScanProfile.STANDARD.name();
+        public boolean safeMode;
+        public Double delaySeconds;
+        public Integer bruteForceAttempts;
+        public Integer rateLimitConcurrency;
+        public Integer rateLimitRequests;
+        public Map<String, Boolean> scannerEnabled = new LinkedHashMap<>();
+
+        public ScanSettings copy()
+        {
+            ScanSettings copy = new ScanSettings();
+            copy.profileName = profileName;
+            copy.safeMode = safeMode;
+            copy.delaySeconds = delaySeconds;
+            copy.bruteForceAttempts = bruteForceAttempts;
+            copy.rateLimitConcurrency = rateLimitConcurrency;
+            copy.rateLimitRequests = rateLimitRequests;
+            copy.scannerEnabled = new LinkedHashMap<>(scannerEnabled);
+            return copy;
+        }
     }
 }
