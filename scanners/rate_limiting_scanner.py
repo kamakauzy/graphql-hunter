@@ -57,6 +57,8 @@ class RateLimitingScanner:
         findings.extend(self._test_rate_limit_headers())
         
         # Test mutation rate limits
+        if not self.client.schema:
+            self.client.introspect()
         if self.client.schema:
             self.reporter.print_info("Testing mutation rate limits...")
             findings.extend(self._test_mutation_rate_limits())

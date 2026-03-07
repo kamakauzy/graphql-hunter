@@ -43,6 +43,8 @@ class AuthBypassScanner:
         findings.extend(self._test_unauthenticated_access())
         
         # Test for common admin/sensitive queries
+        if not self.client.schema:
+            self.client.introspect()
         if self.client.schema:
             self.reporter.print_info("Testing for sensitive operations...")
             findings.extend(self._test_sensitive_operations())
@@ -52,6 +54,8 @@ class AuthBypassScanner:
         findings.extend(self._test_field_level_auth())
         
         # Test login mutations for brute-force protection
+        if not self.client.schema:
+            self.client.introspect()
         if self.client.schema:
             self.reporter.print_info("Testing login mutations for brute-force protection...")
             findings.extend(self._test_login_brute_force())

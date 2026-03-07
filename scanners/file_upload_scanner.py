@@ -40,6 +40,9 @@ class FileUploadScanner:
             List of findings
         """
         findings = []
+
+        if not self.client.schema:
+            self.client.introspect()
         
         if not self.client.schema:
             self.reporter.print_warning("Schema not available, skipping file upload tests")

@@ -4,6 +4,10 @@
 
 GraphQL Hunter now supports importing requests from various formats, making it easy to test endpoints without manually typing headers, queries, and variables.
 
+CLI note:
+- Preferred commands use the installed CLI: `gqlh ...`
+- Source-checkout fallback: `python3 gqlh.py ...`
+
 ## Supported Formats
 
 ### 1. Postman Collection (JSON)

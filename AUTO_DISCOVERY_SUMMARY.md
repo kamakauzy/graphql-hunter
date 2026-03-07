@@ -25,6 +25,10 @@ python graphql-hunter.py --auto-discover notes.txt config.json request.yaml
 
 ## Real Example: Notes File
 
+CLI note:
+- Preferred commands use the installed CLI: `gqlh ...`
+- Source-checkout fallback: `python3 gqlh.py ...`
+
 You provide notes like:
 ```
 email: user@example.com

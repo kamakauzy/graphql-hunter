@@ -122,6 +122,8 @@ class AliasingScanner:
         findings = []
         
         if not self.client.schema:
+            self.client.introspect()
+        if not self.client.schema:
             return findings
         
         # Try to find a query that takes arguments

@@ -37,6 +37,9 @@ class MutationFuzzer:
             List of findings
         """
         findings = []
+
+        if not self.client.schema:
+            self.client.introspect()
         
         if not self.client.schema:
             self.reporter.print_info("Schema not available, skipping mutation tests")

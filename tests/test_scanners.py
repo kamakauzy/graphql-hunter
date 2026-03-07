@@ -97,6 +97,9 @@ class _FakeClient:
     def get_types(self):
         return self.schema["types"]
 
+    def introspect(self, force=False):
+        return self.schema
+
     def query(self, query, variables=None, operation_name=None, **_kwargs):
         variables = variables or {}
         if operation_name and operation_name.startswith("AutoQueryEcho"):
@@ -153,6 +156,16 @@ class TestScanners(unittest.TestCase):
         self.assertTrue(findings)
         self.assertEqual(findings[0]["scanner"], "file_upload")
         self.assertIn(findings[0]["status"], {"potential", "manual_review"})
+
+    def test_scanners_can_self_introspect_when_schema_not_preloaded(self):
+        client = _FakeClient()
+        client.schema = None
+        client.introspect = lambda force=False: setattr(client, "schema", SCHEMA) or SCHEMA
+
+        scanner = InjectionScanner(client, _DummyReporter(), {"enable_deep_injection": False})
+        findings = scanner.scan()
+
+        self.assertTrue(findings)
 
 
 if __name__ == "__main__":

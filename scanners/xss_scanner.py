@@ -37,6 +37,9 @@ class XSSScanner:
         findings = []
 
         if not self.client.schema:
+            self.client.introspect()
+
+        if not self.client.schema:
             self.reporter.print_warning("Schema not available, skipping XSS tests")
             return findings
 

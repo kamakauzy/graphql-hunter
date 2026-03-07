@@ -4,6 +4,10 @@
 
 The `validate_auth()` method in `GraphQLClient` determines if authentication is working by **comparing two identical requests** - one with your auth headers and one without.
 
+CLI note:
+- Preferred commands use the installed CLI: `gqlh ...`
+- Source-checkout fallback: `python3 gqlh.py ...`
+
 ## Step-by-Step Process
 
 ### 1. **Make Request WITH Auth Headers**

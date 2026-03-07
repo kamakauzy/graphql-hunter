@@ -65,6 +65,9 @@ class InjectionScanner:
         findings = []
 
         if not self.client.schema:
+            self.client.introspect()
+
+        if not self.client.schema:
             self.reporter.print_warning("Introspection not available, skipping schema-aware injection tests")
             return findings
 

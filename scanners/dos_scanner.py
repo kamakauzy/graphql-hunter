@@ -50,6 +50,8 @@ class DoSScanner:
         findings.extend(self._test_field_duplication())
         
         # Test circular references (if schema available)
+        if not self.client.schema:
+            self.client.introspect()
         if self.client.schema:
             self.reporter.print_info("Testing circular query handling...")
             findings.extend(self._test_circular_queries())

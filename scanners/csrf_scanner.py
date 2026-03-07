@@ -49,6 +49,8 @@ class CSRFScanner:
         
         # Test mutations for CSRF vulnerabilities
         if not self.client.schema:
+            self.client.introspect()
+        if not self.client.schema:
             self.reporter.print_warning("Schema not available, skipping CSRF tests")
             return findings
         

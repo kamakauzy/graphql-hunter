@@ -11,6 +11,11 @@ The auto-discovery feature automatically figures out authentication, configurati
 - ✅ Generate ready-to-run commands
 - ✅ Auto-configure the built-in `token_auth` profile when email/password are discovered
 
+CLI note:
+- Preferred commands use the installed CLI: `gqlh ...`
+- Source-checkout fallback: `python3 gqlh.py ...`
+- Legacy `python3 graphql-hunter.py ...` usage still works
+
 ## Usage
 
 ### Basic Usage
