@@ -47,7 +47,13 @@ public final class GraphQLHunterScanners
     public static List<Finding> run(ScanRequest request, ScanConfiguration configuration, AuthSettings authSettings, GraphQLHunterLogger logger)
     {
         AuthManager authManager = AuthManager.fromState(authSettings, logger);
-        GraphQLClient client = new GraphQLClient(request.url, request.headers, new GraphQLHunterCore.JavaHttpTransport(), logger, authManager);
+        GraphQLClient client = new GraphQLClient(
+            request.url,
+            request.headers,
+            new GraphQLHunterCore.JavaHttpTransport(configuration.timeoutSeconds, configuration.delaySeconds),
+            logger,
+            authManager
+        );
         ScanContext context = new ScanContext(request, configuration, client, logger, ConfigurationLoader.payloads());
         List<ScannerCheck> checks = List.of(
             new IntrospectionScanner(),

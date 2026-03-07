@@ -6,7 +6,6 @@ import graphqlhunter.GraphQLHunterModels;
 import graphqlhunter.auth.config.AuthConfigurationLoader;
 import graphqlhunter.auth.config.AuthProfileDefinition;
 
-import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -73,6 +72,8 @@ public final class AuthManager
                 definition.headerName,
                 settings.authVars.getOrDefault(definition.var == null || definition.var.isBlank() ? "api_key" : definition.var, "")
             );
+            case "scripted" -> new ScriptedProvider(definition, mergedVariables(settings));
+            case "cookie_session" -> new CookieSessionProvider(definition, mergedVariables(settings));
             default -> {
                 if (logger != null)
                 {
@@ -81,6 +82,14 @@ public final class AuthManager
                 yield null;
             }
         };
+    }
+
+    private static Map<String, String> mergedVariables(GraphQLHunterModels.AuthSettings settings)
+    {
+        java.util.LinkedHashMap<String, String> merged = new java.util.LinkedHashMap<>();
+        merged.putAll(settings.authVars);
+        merged.putAll(settings.runtimeOnlySecrets);
+        return merged;
     }
 
     public void ensurePrepared(GraphQLHunterCore.GraphQLClient client)
