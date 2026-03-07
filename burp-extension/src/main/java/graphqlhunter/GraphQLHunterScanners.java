@@ -55,13 +55,39 @@ public final class GraphQLHunterScanners
             authManager
         );
         ScanContext context = new ScanContext(request, configuration, client, logger, ConfigurationLoader.payloads());
-        List<ScannerCheck> checks = List.of(
-            new IntrospectionScanner(),
-            new InfoDisclosureScanner(),
-            new AuthExposureScanner(),
-            new BatchingScanner(),
-            new InjectionLiteScanner()
-        );
+        List<ScannerCheck> checks = new ArrayList<>();
+        if (isEnabled(configuration, "introspection"))
+        {
+            checks.add(new IntrospectionScanner());
+        }
+        if (isEnabled(configuration, "info_disclosure"))
+        {
+            checks.add(new InfoDisclosureScanner());
+        }
+        if (isEnabled(configuration, "auth"))
+        {
+            checks.add(new AuthExposureScanner());
+        }
+        if (isEnabled(configuration, "batching"))
+        {
+            checks.add(new BatchingScanner());
+        }
+        if (isEnabled(configuration, "injection"))
+        {
+            checks.add(new InjectionLiteScanner());
+        }
+        if (configuration.enableDos && isEnabled(configuration, "dos"))
+        {
+            checks.add(new DoSScanner());
+        }
+        if (isEnabled(configuration, "aliasing"))
+        {
+            checks.add(new AliasingScanner());
+        }
+        if (isEnabled(configuration, "circular"))
+        {
+            checks.add(new CircularQueryScanner());
+        }
 
         List<Finding> findings = new ArrayList<>();
         for (ScannerCheck check : checks)
@@ -512,6 +538,11 @@ public final class GraphQLHunterScanners
         return finding;
     }
 
+    private static boolean isEnabled(ScanConfiguration configuration, String scannerName)
+    {
+        return configuration == null || configuration.isScannerEnabled(scannerName);
+    }
+
     private static String abbreviate(String value)
     {
         if (value == null)
@@ -519,5 +550,374 @@ public final class GraphQLHunterScanners
             return "";
         }
         return value.length() <= 500 ? value : value.substring(0, 500) + "...";
+    }
+
+    public static final class DoSScanner implements ScannerCheck
+    {
+        @Override
+        public String name()
+        {
+            return "dos";
+        }
+
+        @Override
+        public List<Finding> scan(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            findings.addAll(testDeepNesting(context));
+            findings.addAll(testFieldDuplication(context));
+            findings.addAll(testCircularReferences(context));
+            findings.addAll(testComplexityLimits(context));
+            return findings;
+        }
+
+        private List<Finding> testDeepNesting(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            int maxDepth = Math.min(context.configuration().depthLimit + 5, 15);
+            for (int depth = 5; depth <= maxDepth; depth++)
+            {
+                String query = buildNestedQuery(depth);
+                GraphQLResponse response = context.client().query(query, null, null);
+                String errors = response.errorsText().toLowerCase(Locale.ROOT);
+                if (errors.contains("depth") || errors.contains("nested"))
+                {
+                    Finding finding = finding(
+                        "Query Depth Limit Enforced",
+                        name(),
+                        FindingSeverity.INFO,
+                        FindingStatus.CONFIRMED,
+                        "The endpoint rejected a deeply nested query with a depth-limit style response.",
+                        "Depth limits are a useful control against GraphQL resource-exhaustion attacks.",
+                        "No action needed. Keep depth limiting enabled."
+                    );
+                    finding.evidence.put("depth_limit", depth);
+                    findings.add(finding);
+                    return findings;
+                }
+                if (response.hasData() && depth >= 10)
+                {
+                    Finding finding = finding(
+                        "No Query Depth Limit Detected",
+                        name(),
+                        FindingSeverity.MEDIUM,
+                        FindingStatus.POTENTIAL,
+                        "The endpoint accepted an intentionally deep query without an explicit depth-limit response.",
+                        "Without depth limiting, attackers can craft arbitrarily deep queries that stress parsers and resolvers.",
+                        "Implement server-side query depth limits, ideally around 5-7 for production APIs."
+                    );
+                    finding.evidence.put("depth_tested", depth);
+                    finding.proof = query;
+                    finding.requestSnippet = query;
+                    findings.add(finding);
+                    return findings;
+                }
+            }
+            return findings;
+        }
+
+        private List<Finding> testFieldDuplication(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            int fieldCount = Math.min(context.configuration().fieldLimit + 10, 50);
+            List<String> aliases = new ArrayList<>();
+            for (int index = 0; index < fieldCount; index++)
+            {
+                aliases.add("field" + index + ": __typename");
+            }
+            String query = "{ " + String.join(" ", aliases) + " }";
+            GraphQLResponse response = context.client().query(query, null, null);
+            if (response.hasData() && response.elapsedMillis > 2000)
+            {
+                Finding finding = finding(
+                    "Large Query With Field Duplication Accepted",
+                    name(),
+                    FindingSeverity.LOW,
+                    FindingStatus.POTENTIAL,
+                    "The endpoint accepted a large query that duplicates the same field many times using aliases.",
+                    "Field duplication can multiply resolver work and increase the impact of a single request.",
+                    "Add complexity accounting for duplicated fields and aliases."
+                );
+                finding.evidence.put("field_count", fieldCount);
+                finding.evidence.put("elapsed_ms", response.elapsedMillis);
+                finding.proof = query;
+                finding.requestSnippet = query;
+                findings.add(finding);
+            }
+            return findings;
+        }
+
+        private List<Finding> testCircularReferences(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            Map<String, Object> schema = context.client().introspect();
+            if (schema == null || schema.isEmpty())
+            {
+                return findings;
+            }
+            for (Map<String, Object> type : GraphQLHunterCore.asList(schema.get("types")))
+            {
+                if (!"OBJECT".equals(String.valueOf(type.get("kind"))))
+                {
+                    continue;
+                }
+                String typeName = String.valueOf(type.getOrDefault("name", ""));
+                if (typeName.startsWith("__"))
+                {
+                    continue;
+                }
+                for (Map<String, Object> field : GraphQLHunterCore.asList(type.get("fields")))
+                {
+                    if (typeName.equals(GraphQLHunterCore.extractTypeName(GraphQLHunterCore.asMap(field.get("type")))))
+                    {
+                        Finding finding = finding(
+                            "Circular Type Reference Detected",
+                            name(),
+                            FindingSeverity.INFO,
+                            FindingStatus.MANUAL_REVIEW,
+                            "The schema contains a self-referential object type.",
+                            "Circular object references can become a DoS vector if depth or complexity controls are weak.",
+                            "Review self-referential types and ensure depth and complexity limits are enforced."
+                        );
+                        finding.evidence.put("type", typeName);
+                        finding.evidence.put("field", field.get("name"));
+                        findings.add(finding);
+                        if (findings.size() >= 3)
+                        {
+                            return findings;
+                        }
+                        break;
+                    }
+                }
+            }
+            return findings;
+        }
+
+        private List<Finding> testComplexityLimits(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            String query = """
+                {
+                  a1: __schema { types { name } }
+                  a2: __schema { types { name } }
+                  a3: __schema { types { name fields { name } } }
+                  a4: __schema { types { name fields { name } } }
+                  a5: __schema { types { name fields { name } } }
+                }
+                """;
+            GraphQLResponse response = context.client().query(query, null, null);
+            String errors = response.errorsText().toLowerCase(Locale.ROOT);
+            if (errors.contains("complexity"))
+            {
+                Finding finding = finding(
+                    "Query Complexity Limit Enforced",
+                    name(),
+                    FindingSeverity.INFO,
+                    FindingStatus.CONFIRMED,
+                    "The endpoint rejected a deliberately complex query with a complexity-specific response.",
+                    "Complexity limits are an effective control against expensive GraphQL request abuse.",
+                    "No action needed. Keep complexity limiting enabled."
+                );
+                findings.add(finding);
+            }
+            else if (response.hasData())
+            {
+                Finding finding = finding(
+                    "No Query Complexity Limit Detected",
+                    name(),
+                    FindingSeverity.LOW,
+                    FindingStatus.POTENTIAL,
+                    "The endpoint accepted a deliberately complex query without an explicit complexity-limit response.",
+                    "Without complexity analysis, expensive GraphQL requests can overload resolver execution paths.",
+                    "Add query complexity analysis and reject queries that exceed a defined budget."
+                );
+                finding.proof = query;
+                finding.requestSnippet = query;
+                findings.add(finding);
+            }
+            return findings;
+        }
+
+        private String buildNestedQuery(int depth)
+        {
+            StringBuilder query = new StringBuilder("__schema { ");
+            for (int index = 0; index < depth - 1; index++)
+            {
+                query.append("types { name fields { name type { ");
+            }
+            query.append("name");
+            for (int index = 0; index < depth - 1; index++)
+            {
+                query.append(" } } }");
+            }
+            query.append(" }");
+            return "{ " + query + " }";
+        }
+    }
+
+    public static final class AliasingScanner implements ScannerCheck
+    {
+        @Override
+        public String name()
+        {
+            return "aliasing";
+        }
+
+        @Override
+        public List<Finding> scan(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            findings.addAll(testFieldAliasing(context));
+            findings.addAll(testAliasCost(context));
+            return findings;
+        }
+
+        private List<Finding> testFieldAliasing(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            for (int count : List.of(10, 50, 100, 200))
+            {
+                if (count > context.configuration().fieldLimit * 3)
+                {
+                    break;
+                }
+                List<String> aliases = new ArrayList<>();
+                for (int index = 0; index < count; index++)
+                {
+                    aliases.add("alias" + index + ": __typename");
+                }
+                String query = "{ " + String.join(" ", aliases) + " }";
+                GraphQLResponse response = context.client().query(query, null, null);
+                String errors = response.errorsText().toLowerCase(Locale.ROOT);
+                if (response.hasData() && (count >= 100 || response.elapsedMillis > 3000))
+                {
+                    Finding finding = finding(
+                        "Field Aliasing Abuse Possible",
+                        name(),
+                        FindingSeverity.HIGH,
+                        FindingStatus.POTENTIAL,
+                        "The endpoint accepted a large query that repeatedly aliases the same field.",
+                        "Excessive field aliasing can multiply the cost of a single GraphQL request and enable resource-exhaustion attacks.",
+                        "Limit total field aliases and include alias count in query complexity calculations."
+                    );
+                    finding.evidence.put("alias_count", count);
+                    finding.evidence.put("elapsed_ms", response.elapsedMillis);
+                    finding.proof = query;
+                    finding.requestSnippet = query;
+                    findings.add(finding);
+                    return findings;
+                }
+                if (errors.contains("alias") || (errors.contains("field") && errors.contains("limit")))
+                {
+                    Finding finding = finding(
+                        "Field Aliasing Limit Enforced",
+                        name(),
+                        FindingSeverity.INFO,
+                        FindingStatus.CONFIRMED,
+                        "The endpoint rejected a high-alias-count query with a limit-style response.",
+                        "Alias limits help mitigate resource-exhaustion attacks based on repeated resolver execution.",
+                        "No action needed. Keep alias or field-count limiting enabled."
+                    );
+                    finding.evidence.put("alias_limit", count);
+                    findings.add(finding);
+                    return findings;
+                }
+            }
+            return findings;
+        }
+
+        private List<Finding> testAliasCost(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            Map<String, Object> schema = context.client().introspect();
+            if (schema == null || schema.isEmpty())
+            {
+                return findings;
+            }
+            List<Map<String, Object>> queries = GraphQLHunterCore.getRootFields(schema, "queryType");
+            if (queries.isEmpty())
+            {
+                return findings;
+            }
+            String queryName = String.valueOf(queries.getFirst().get("name"));
+            List<String> aliases = new ArrayList<>();
+            for (int index = 0; index < 20; index++)
+            {
+                aliases.add("call" + index + ": " + queryName);
+            }
+            String query = "{ " + String.join(" ", aliases) + " }";
+            GraphQLResponse response = context.client().query(query, null, null);
+            if (response.hasData() || response.elapsedMillis > 2000)
+            {
+                Finding finding = finding(
+                    "Multiple Aliased Query Calls Accepted",
+                    name(),
+                    FindingSeverity.LOW,
+                    FindingStatus.POTENTIAL,
+                    "The endpoint allowed the same root query to be called repeatedly through aliases.",
+                    "If the aliased query is expensive, this can amplify backend work within a single request.",
+                    "Count aliased root calls toward complexity and consider caching identical resolver work within one request."
+                );
+                finding.evidence.put("query", queryName);
+                finding.evidence.put("alias_count", 20);
+                finding.evidence.put("elapsed_ms", response.elapsedMillis);
+                finding.proof = query;
+                finding.requestSnippet = query;
+                findings.add(finding);
+            }
+            return findings;
+        }
+    }
+
+    public static final class CircularQueryScanner implements ScannerCheck
+    {
+        @Override
+        public String name()
+        {
+            return "circular";
+        }
+
+        @Override
+        public List<Finding> scan(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            Map<String, Object> schema = context.client().introspect();
+            if (schema == null || schema.isEmpty())
+            {
+                return findings;
+            }
+            for (Map<String, Object> type : GraphQLHunterCore.asList(schema.get("types")))
+            {
+                if (!"OBJECT".equals(String.valueOf(type.get("kind"))))
+                {
+                    continue;
+                }
+                String typeName = String.valueOf(type.getOrDefault("name", ""));
+                if (typeName.startsWith("__"))
+                {
+                    continue;
+                }
+                for (Map<String, Object> field : GraphQLHunterCore.asList(type.get("fields")))
+                {
+                    if (typeName.equals(GraphQLHunterCore.extractTypeName(GraphQLHunterCore.asMap(field.get("type")))))
+                    {
+                        Finding finding = finding(
+                            "Circular Reference Detected",
+                            name(),
+                            FindingSeverity.INFO,
+                            FindingStatus.MANUAL_REVIEW,
+                            "The schema contains a circular object reference.",
+                            "Circular references can enable deeply nested queries when depth or complexity controls are weak.",
+                            "Review depth and complexity protections around self-referential object graphs."
+                        );
+                        finding.evidence.put("type", typeName);
+                        finding.evidence.put("field", field.get("name"));
+                        findings.add(finding);
+                        return findings;
+                    }
+                }
+            }
+            return findings;
+        }
     }
 }
