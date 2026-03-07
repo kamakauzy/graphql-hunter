@@ -47,6 +47,8 @@ public final class GraphQLHunterTab extends JPanel
         void saveState(ExtensionState state);
 
         void runScan(ScanRequest request, ScanSettings settings, Consumer<List<Finding>> onSuccess, Consumer<Throwable> onError);
+
+        void validateAuth(ScanRequest request, AuthSettings settings, Consumer<String> onSuccess, Consumer<Throwable> onError);
     }
 
     private final GraphQLHunterActions actions;
@@ -66,10 +68,12 @@ public final class GraphQLHunterTab extends JPanel
     private final JTextArea authVarsArea = new JTextArea();
     private final JTextArea authStaticHeadersArea = new JTextArea();
     private final JTextArea authImportedHeadersArea = new JTextArea();
+    private final JTextArea authValidationArea = new JTextArea();
     private final JTextArea detailsArea = new JTextArea();
     private final JTextArea logArea = new JTextArea();
     private final JLabel statusLabel = new JLabel("Ready.");
     private final JButton scanButton = new JButton("Run Focused GraphQL Checks");
+    private final JButton validateAuthButton = new JButton("Validate Auth");
     private final JButton saveButton = new JButton("Save Request");
     private final JButton clearButton = new JButton("Clear Findings");
     private final FindingTableModel findingTableModel = new FindingTableModel();
@@ -105,6 +109,9 @@ public final class GraphQLHunterTab extends JPanel
         authStaticHeadersArea.setWrapStyleWord(true);
         authImportedHeadersArea.setLineWrap(true);
         authImportedHeadersArea.setWrapStyleWord(true);
+        authValidationArea.setLineWrap(true);
+        authValidationArea.setWrapStyleWord(true);
+        authValidationArea.setEditable(false);
 
         AuthConfigurationLoader.configuration().profiles.keySet().forEach(authProfileCombo::addItem);
 
@@ -126,6 +133,7 @@ public final class GraphQLHunterTab extends JPanel
         });
 
         scanButton.addActionListener(event -> runScan());
+        validateAuthButton.addActionListener(event -> runAuthValidation());
         saveButton.addActionListener(event -> saveState());
         clearButton.addActionListener(event ->
         {
@@ -284,12 +292,18 @@ public final class GraphQLHunterTab extends JPanel
 
         gbc.gridx = 0;
         gbc.gridy = 1;
-        gbc.gridwidth = 4;
+        gbc.gridwidth = 2;
         panel.add(authDetectFailuresCheck, gbc);
 
+        gbc.gridx = 2;
+        gbc.gridwidth = 2;
+        panel.add(validateAuthButton, gbc);
+
         gbc.gridy = 2;
+        gbc.gridx = 0;
         gbc.weightx = 1.0;
-        gbc.weighty = 0.34;
+        gbc.gridwidth = 4;
+        gbc.weighty = 0.25;
         gbc.fill = GridBagConstraints.BOTH;
         panel.add(labeledScroll("Auth Variables (key=value)", authVarsArea, 160), gbc);
 
@@ -298,6 +312,9 @@ public final class GraphQLHunterTab extends JPanel
 
         gbc.gridy = 4;
         panel.add(labeledScroll("Imported Auth Headers (read-only)", authImportedHeadersArea, 140), gbc);
+
+        gbc.gridy = 5;
+        panel.add(labeledScroll("Auth Validation Result", authValidationArea, 160), gbc);
 
         return panel;
     }
@@ -448,6 +465,28 @@ public final class GraphQLHunterTab extends JPanel
             }
         }
         return settings;
+    }
+
+    private void runAuthValidation()
+    {
+        ScanRequest request = buildRequestFromInputs();
+        AuthSettings settings = buildAuthSettingsFromInputs(actions.currentState() == null ? null : actions.currentState().authSettings);
+        if (request.url == null || request.url.isBlank())
+        {
+            statusLabel.setText("URL is required for auth validation.");
+            return;
+        }
+        validateAuthButton.setEnabled(false);
+        authValidationArea.setText("Running auth validation...");
+        actions.validateAuth(request, settings, result ->
+        {
+            authValidationArea.setText(result);
+            validateAuthButton.setEnabled(true);
+        }, throwable ->
+        {
+            authValidationArea.setText("Validation failed: " + throwable.getMessage());
+            validateAuthButton.setEnabled(true);
+        });
     }
 
     private AuthSettings buildAuthSettingsFromInputs(AuthSettings existing)

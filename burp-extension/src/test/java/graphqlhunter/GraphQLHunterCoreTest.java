@@ -1,6 +1,8 @@
 package graphqlhunter;
 
+import graphqlhunter.auth.AuthManager;
 import graphqlhunter.GraphQLHunterCore.Operation;
+import graphqlhunter.GraphQLHunterModels.AuthSettings;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
 import org.junit.jupiter.api.Test;
 
@@ -74,6 +76,28 @@ class GraphQLHunterCoreTest
         assertEquals("abc", built.variables.get("id"));
     }
 
+    @Test
+    void validatesAuthByComparingResponses()
+    {
+        AuthSettings settings = new AuthSettings();
+        settings.mode = "imported_headers";
+        settings.importedAuthHeaders.put("Authorization", "Bearer secret");
+        GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+            "https://api.example.com/graphql",
+            Map.of(),
+            new AuthValidationTransport(),
+            null,
+            AuthManager.fromState(settings, null)
+        );
+
+        GraphQLHunterCore.AuthValidationResult result = client.validateAuth("{ viewer { id } }", null);
+
+        assertTrue(result.authWorking);
+        assertTrue(result.authRequired);
+        assertEquals(200, result.statusWithAuth);
+        assertEquals(401, result.statusWithoutAuth);
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> sampleSchema()
     {
@@ -110,5 +134,33 @@ class GraphQLHunterCoreTest
               ]
             }
             """);
+    }
+
+    private static final class AuthValidationTransport implements GraphQLHunterCore.SessionAwareTransport
+    {
+        @Override
+        public GraphQLHunterCore.GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            boolean authorized = headers.containsKey("Authorization");
+            GraphQLHunterCore.GraphQLResponse response = new GraphQLHunterCore.GraphQLResponse();
+            response.statusCode = authorized ? 200 : 401;
+            response.json = authorized ? Map.of("data", Map.of("viewer", Map.of("id", "123"))) : Map.of("errors", List.of(Map.of("message", "Unauthorized")));
+            response.body = GraphQLHunterJson.write(response.json);
+            response.headers = new LinkedHashMap<>();
+            response.elapsedMillis = 5L;
+            return response;
+        }
+
+        @Override
+        public GraphQLHunterCore.GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            return postJson(url, headers, jsonBody);
+        }
+
+        @Override
+        public String getCookie(String name)
+        {
+            return null;
+        }
     }
 }
