@@ -40,6 +40,19 @@ class ReportingServiceTest
         assertTrue(html.contains("GraphQL Introspection Enabled"));
     }
 
+    @Test
+    void jsonReportIncludesSummaryAndFindings()
+    {
+        GraphQLHunterModels.Finding finding = finding(GraphQLHunterModels.FindingSeverity.HIGH, GraphQLHunterModels.FindingStatus.CONFIRMED);
+        finding.title = "Possible SQL Injection Behavior";
+
+        String json = new ReportingService().toJsonReport("https://api.example.com/graphql", "deep", List.of(finding));
+
+        assertTrue(json.contains("\"target\""));
+        assertTrue(json.contains("\"Possible SQL Injection Behavior\""));
+        assertTrue(json.contains("\"riskLevel\""));
+    }
+
     private GraphQLHunterModels.Finding finding(GraphQLHunterModels.FindingSeverity severity, GraphQLHunterModels.FindingStatus status)
     {
         GraphQLHunterModels.Finding finding = new GraphQLHunterModels.Finding();

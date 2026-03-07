@@ -9,11 +9,17 @@ import graphqlhunter.GraphQLHunterModels.ScanProfile;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
 import graphqlhunter.GraphQLHunterModels.ScanSettings;
 import graphqlhunter.auth.config.AuthConfigurationLoader;
+import graphqlhunter.discovery.AutoDiscover;
+import graphqlhunter.discovery.DiscoveryResult;
+import graphqlhunter.importer.ImportedRequest;
+import graphqlhunter.importer.RequestImporter;
+import graphqlhunter.reporting.ReportingService;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
+import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -31,6 +37,9 @@ import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,6 +71,9 @@ public final class GraphQLHunterTab extends JPanel
     private final JComboBox<String> authModeCombo = new JComboBox<>(new String[]{"none", "imported_headers", "static_headers", "profile"});
     private final JComboBox<String> authProfileCombo = new JComboBox<>();
     private final JCheckBox authDetectFailuresCheck = new JCheckBox("Detect auth failures / retry once");
+    private final JTextField importNameField = new JTextField("request.txt");
+    private final JComboBox<String> importFormatCombo = new JComboBox<>(new String[]{"auto", "curl", "raw_http", "json", "yaml", "postman"});
+    private final JComboBox<String> importedRequestCombo = new JComboBox<>();
     private final JTextArea queryArea = new JTextArea();
     private final JTextArea variablesArea = new JTextArea();
     private final JTextArea headersArea = new JTextArea();
@@ -69,6 +81,9 @@ public final class GraphQLHunterTab extends JPanel
     private final JTextArea authStaticHeadersArea = new JTextArea();
     private final JTextArea authImportedHeadersArea = new JTextArea();
     private final JTextArea authValidationArea = new JTextArea();
+    private final JTextArea importContentArea = new JTextArea();
+    private final JTextArea discoveryNotesArea = new JTextArea();
+    private final JTextArea discoveryResultArea = new JTextArea();
     private final JTextArea detailsArea = new JTextArea();
     private final JTextArea logArea = new JTextArea();
     private final JLabel statusLabel = new JLabel("Ready.");
@@ -76,8 +91,17 @@ public final class GraphQLHunterTab extends JPanel
     private final JButton validateAuthButton = new JButton("Validate Auth");
     private final JButton saveButton = new JButton("Save Request");
     private final JButton clearButton = new JButton("Clear Findings");
+    private final JButton importParseButton = new JButton("Parse Import Content");
+    private final JButton importApplyButton = new JButton("Apply Imported Request");
+    private final JButton discoveryAnalyzeButton = new JButton("Analyze Notes");
+    private final JButton discoveryApplyButton = new JButton("Apply Discovery");
+    private final JButton exportJsonButton = new JButton("Export JSON");
+    private final JButton exportHtmlButton = new JButton("Export HTML");
     private final FindingTableModel findingTableModel = new FindingTableModel();
     private final JTable findingsTable = new JTable(findingTableModel);
+    private final List<ImportedRequest> importedRequests = new ArrayList<>();
+    private final ReportingService reportingService = new ReportingService();
+    private DiscoveryResult latestDiscovery;
 
     public GraphQLHunterTab(GraphQLHunterActions actions, GraphQLHunterLogger logger)
     {
@@ -112,6 +136,13 @@ public final class GraphQLHunterTab extends JPanel
         authValidationArea.setLineWrap(true);
         authValidationArea.setWrapStyleWord(true);
         authValidationArea.setEditable(false);
+        importContentArea.setLineWrap(true);
+        importContentArea.setWrapStyleWord(true);
+        discoveryNotesArea.setLineWrap(true);
+        discoveryNotesArea.setWrapStyleWord(true);
+        discoveryResultArea.setLineWrap(true);
+        discoveryResultArea.setWrapStyleWord(true);
+        discoveryResultArea.setEditable(false);
 
         AuthConfigurationLoader.configuration().profiles.keySet().forEach(authProfileCombo::addItem);
 
@@ -135,6 +166,12 @@ public final class GraphQLHunterTab extends JPanel
         scanButton.addActionListener(event -> runScan());
         validateAuthButton.addActionListener(event -> runAuthValidation());
         saveButton.addActionListener(event -> saveState());
+        importParseButton.addActionListener(event -> parseImportedContent());
+        importApplyButton.addActionListener(event -> applyImportedRequest());
+        discoveryAnalyzeButton.addActionListener(event -> analyzeDiscovery());
+        discoveryApplyButton.addActionListener(event -> applyDiscovery());
+        exportJsonButton.addActionListener(event -> exportReport(false));
+        exportHtmlButton.addActionListener(event -> exportReport(true));
         clearButton.addActionListener(event ->
         {
             findingTableModel.setRows(List.of());
@@ -217,6 +254,8 @@ public final class GraphQLHunterTab extends JPanel
 
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         buttonRow.add(scanButton);
+        buttonRow.add(exportJsonButton);
+        buttonRow.add(exportHtmlButton);
         buttonRow.add(saveButton);
         buttonRow.add(clearButton);
         buttonRow.add(statusLabel);
@@ -244,6 +283,7 @@ public final class GraphQLHunterTab extends JPanel
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("Request", buildRequestEditorPanel());
         tabs.addTab("Auth", buildAuthPanel());
+        tabs.addTab("Import & Discovery", buildImportDiscoveryPanel());
         return tabs;
     }
 
@@ -315,6 +355,66 @@ public final class GraphQLHunterTab extends JPanel
 
         gbc.gridy = 5;
         panel.add(labeledScroll("Auth Validation Result", authValidationArea, 160), gbc);
+
+        return panel;
+    }
+
+    private JPanel buildImportDiscoveryPanel()
+    {
+        JPanel panel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4, 4, 4, 4);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        panel.add(new JLabel("Import name"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 0.5;
+        panel.add(importNameField, gbc);
+        gbc.gridx = 2;
+        gbc.weightx = 0;
+        panel.add(new JLabel("Format"), gbc);
+        gbc.gridx = 3;
+        gbc.weightx = 0.3;
+        panel.add(importFormatCombo, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.gridwidth = 4;
+        gbc.weightx = 1.0;
+        gbc.weighty = 0.32;
+        gbc.fill = GridBagConstraints.BOTH;
+        panel.add(labeledScroll("Import Content", importContentArea, 180), gbc);
+
+        JPanel importButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        importButtons.add(importParseButton);
+        importButtons.add(importedRequestCombo);
+        importButtons.add(importApplyButton);
+
+        gbc.gridy = 2;
+        gbc.weighty = 0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        panel.add(importButtons, gbc);
+
+        gbc.gridy = 3;
+        gbc.weighty = 0.25;
+        gbc.fill = GridBagConstraints.BOTH;
+        panel.add(labeledScroll("Discovery Notes / Artifacts", discoveryNotesArea, 160), gbc);
+
+        JPanel discoveryButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        discoveryButtons.add(discoveryAnalyzeButton);
+        discoveryButtons.add(discoveryApplyButton);
+
+        gbc.gridy = 4;
+        gbc.weighty = 0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        panel.add(discoveryButtons, gbc);
+
+        gbc.gridy = 5;
+        gbc.weighty = 0.25;
+        gbc.fill = GridBagConstraints.BOTH;
+        panel.add(labeledScroll("Discovery Result", discoveryResultArea, 180), gbc);
 
         return panel;
     }
@@ -489,6 +589,137 @@ public final class GraphQLHunterTab extends JPanel
         });
     }
 
+    private void parseImportedContent()
+    {
+        try
+        {
+            importedRequests.clear();
+            String format = String.valueOf(importFormatCombo.getSelectedItem());
+            List<ImportedRequest> parsed = switch (format)
+            {
+                case "curl" -> List.of(RequestImporter.fromCurlCommand(importContentArea.getText()));
+                case "raw_http" -> List.of(RequestImporter.fromRawHttp(importContentArea.getText()));
+                case "json" -> List.of(RequestImporter.fromJsonContent(importContentArea.getText()));
+                case "yaml" -> List.of(RequestImporter.fromYamlContent(importContentArea.getText()));
+                case "postman" -> RequestImporter.fromPostmanCollectionContent(importContentArea.getText());
+                default -> RequestImporter.autoDetect(importNameField.getText(), importContentArea.getText());
+            };
+            importedRequests.addAll(parsed);
+            importedRequestCombo.removeAllItems();
+            importedRequests.forEach(request ->
+                importedRequestCombo.addItem((request.folder == null || request.folder.isBlank() ? "" : request.folder + " / ") + request.name)
+            );
+            statusLabel.setText("Parsed " + importedRequests.size() + " imported request(s).");
+        }
+        catch (Exception exception)
+        {
+            statusLabel.setText("Import parse failed: " + exception.getMessage());
+            logger.warn("Import parse failed: " + exception.getMessage());
+        }
+    }
+
+    private void applyImportedRequest()
+    {
+        int selectedIndex = importedRequestCombo.getSelectedIndex();
+        if (selectedIndex < 0 || selectedIndex >= importedRequests.size())
+        {
+            statusLabel.setText("No imported request selected.");
+            return;
+        }
+        importRequest(importedRequests.get(selectedIndex).toScanRequest());
+        statusLabel.setText("Applied imported request to current scan target.");
+    }
+
+    private void analyzeDiscovery()
+    {
+        try
+        {
+            AutoDiscover discoverer = new AutoDiscover();
+            latestDiscovery = discoverer.autoDiscover(importNameField.getText(), discoveryNotesArea.getText());
+            StringBuilder builder = new StringBuilder();
+            builder.append("URL: ").append(String.valueOf(latestDiscovery.url)).append(System.lineSeparator());
+            builder.append("Auth method: ").append(String.valueOf(latestDiscovery.authMethod)).append(System.lineSeparator()).append(System.lineSeparator());
+            if (!latestDiscovery.headers.isEmpty())
+            {
+                builder.append("Headers").append(System.lineSeparator());
+                latestDiscovery.headers.forEach((key, value) -> builder.append(key).append(": ").append(value).append(System.lineSeparator()));
+                builder.append(System.lineSeparator());
+            }
+            if (!latestDiscovery.credentials.isEmpty())
+            {
+                builder.append("Credentials").append(System.lineSeparator());
+                latestDiscovery.credentials.forEach((key, value) -> builder.append(key).append("=").append(value).append(System.lineSeparator()));
+                builder.append(System.lineSeparator());
+            }
+            builder.append("Recommendations").append(System.lineSeparator()).append(GraphQLHunterJson.write(latestDiscovery.recommendations));
+            discoveryResultArea.setText(builder.toString());
+            statusLabel.setText("Discovery analysis complete.");
+        }
+        catch (Exception exception)
+        {
+            discoveryResultArea.setText("Discovery failed: " + exception.getMessage());
+            statusLabel.setText("Discovery failed.");
+        }
+    }
+
+    private void applyDiscovery()
+    {
+        if (latestDiscovery == null)
+        {
+            statusLabel.setText("No discovery result to apply.");
+            return;
+        }
+        if (latestDiscovery.url != null && !latestDiscovery.url.isBlank())
+        {
+            urlField.setText(latestDiscovery.url);
+        }
+        if ("token_auth".equals(String.valueOf(latestDiscovery.recommendations.get("auth_profile"))))
+        {
+            authModeCombo.setSelectedItem("profile");
+            authProfileCombo.setSelectedItem("token_auth");
+            @SuppressWarnings("unchecked")
+            List<String> authVars = (List<String>) latestDiscovery.recommendations.getOrDefault("auth_vars", List.of());
+            LinkedHashMap<String, String> values = parseKeyValueLines(authVars);
+            authVarsArea.setText(renderKeyValueMap(values));
+        }
+        else if (!latestDiscovery.headers.isEmpty())
+        {
+            authModeCombo.setSelectedItem("static_headers");
+            authStaticHeadersArea.setText(renderHeaders(latestDiscovery.headers));
+        }
+        statusLabel.setText("Applied discovery result to current configuration.");
+    }
+
+    private void exportReport(boolean html)
+    {
+        List<Finding> findings = findingTableModel.all();
+        if (findings.isEmpty())
+        {
+            statusLabel.setText("No findings available to export.");
+            return;
+        }
+
+        JFileChooser chooser = new JFileChooser();
+        chooser.setSelectedFile(new java.io.File(html ? "graphql-hunter-report.html" : "graphql-hunter-report.json"));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION)
+        {
+            return;
+        }
+        Path path = chooser.getSelectedFile().toPath();
+        try
+        {
+            String content = html
+                ? reportingService.toHtmlReport(urlField.getText().trim(), String.valueOf(profileCombo.getSelectedItem()), findings)
+                : reportingService.toJsonReport(urlField.getText().trim(), String.valueOf(profileCombo.getSelectedItem()), findings);
+            Files.writeString(path, content);
+            statusLabel.setText("Exported report to " + path.getFileName());
+        }
+        catch (IOException exception)
+        {
+            statusLabel.setText("Failed to export report: " + exception.getMessage());
+        }
+    }
+
     private AuthSettings buildAuthSettingsFromInputs(AuthSettings existing)
     {
         AuthSettings settings = existing == null ? new AuthSettings() : existing.copy();
@@ -564,6 +795,21 @@ public final class GraphQLHunterTab extends JPanel
         return values;
     }
 
+    private LinkedHashMap<String, String> parseKeyValueLines(List<String> lines)
+    {
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        for (String line : lines)
+        {
+            if (line == null || !line.contains("="))
+            {
+                continue;
+            }
+            String[] parts = line.split("=", 2);
+            values.put(parts[0].trim(), parts[1].trim());
+        }
+        return values;
+    }
+
     private String renderHeaders(Map<String, String> headers)
     {
         StringBuilder builder = new StringBuilder();
@@ -593,6 +839,11 @@ public final class GraphQLHunterTab extends JPanel
         public Finding get(int row)
         {
             return row >= 0 && row < rows.size() ? rows.get(row) : null;
+        }
+
+        public List<Finding> all()
+        {
+            return new ArrayList<>(rows);
         }
 
         @Override
