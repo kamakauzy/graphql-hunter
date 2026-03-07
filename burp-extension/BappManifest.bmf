@@ -1,0 +1,13 @@
+Uuid: 63b80d53-9a0f-42dc-88e5-55dcdf0188ea
+ExtensionType: 1
+Name: GraphQL Hunter
+RepoName: graphql-hunter
+ScreenVersion: 1.0.0
+SerialVersion: 1
+MinPlatformVersion: 2026.1
+ProOnly: true
+Author: OpenAI
+ShortDescription: Native Burp Suite Professional addon for importing GraphQL requests and running focused GraphQL security checks.
+EntryPoint: build/libs/GraphQLHunterBurp.jar
+BuildCommand: ./gradlew clean fatJar test
+SupportedProducts: Professional
