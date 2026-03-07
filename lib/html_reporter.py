@@ -55,6 +55,18 @@ class HTMLReporter:
         status_counts = dict((summary or {}).get('by_status') or {})
         total = int((summary or {}).get('total') or sum(severity_counts.values()))
         risk_level = (summary or {}).get('risk_level') or 'MINIMAL'
+        executed_scanners = (scan_info or {}).get('executed_scanners', metadata.get('executed_scanners', []))
+        skipped_scanners = (scan_info or {}).get('skipped_scanners', metadata.get('skipped_scanners', []))
+        failed_scanners = (scan_info or {}).get('failed_scanners', metadata.get('failed_scanners', []))
+        executed_html = "<br>".join(HTMLReporter._escape_html(str(name)) for name in executed_scanners) or "None"
+        skipped_html = "<br>".join(
+            HTMLReporter._escape_html(f"{entry.get('scanner')}: {entry.get('reason')}")
+            for entry in skipped_scanners
+        ) or "None"
+        failed_html = "<br>".join(
+            HTMLReporter._escape_html(f"{entry.get('scanner')}: {entry.get('error')}")
+            for entry in failed_scanners
+        ) or "None"
         
         # Build findings HTML
         findings_html = HTMLReporter._build_findings_html(findings)
@@ -275,6 +287,45 @@ class HTMLReporter:
             color: #00ffff;
             margin-bottom: 25px;
             font-size: 1.8em;
+        }}
+
+        .filters {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }}
+
+        .filter-card {{
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #00ffff;
+        }}
+
+        .filter-card label {{
+            display: block;
+            color: #00ffff;
+            font-size: 0.85em;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+
+        .filter-card select, .filter-card input {{
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            background: #0d0d0d;
+            color: #fff;
+        }}
+
+        .coverage-list {{
+            margin-top: 10px;
+            color: #cccccc;
+            line-height: 1.6;
+            font-size: 0.95em;
         }}
         
         .finding {{
@@ -544,10 +595,48 @@ class HTMLReporter:
                 Potential: <strong>{status_counts.get('potential', 0)}</strong> ·
                 Manual review: <strong>{status_counts.get('manual_review', 0)}</strong>
             </p>
+            <div class="coverage-list" style="text-align: center; margin-top: 20px;">
+                <strong>Executed scanners</strong><br>{executed_html}<br><br>
+                <strong>Skipped scanners</strong><br>{skipped_html}<br><br>
+                <strong>Failed scanners</strong><br>{failed_html}
+            </div>
         </div>
         
         <div class="findings">
             <h2>Detailed Findings</h2>
+            <div class="filters">
+                <div class="filter-card">
+                    <label for="severityFilter">Severity</label>
+                    <select id="severityFilter" onchange="applyFilters()">
+                        <option value="">All severities</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                        <option value="info">Info</option>
+                    </select>
+                </div>
+                <div class="filter-card">
+                    <label for="statusFilter">Finding status</label>
+                    <select id="statusFilter" onchange="applyFilters()">
+                        <option value="">All statuses</option>
+                        <option value="confirmed">Confirmed</option>
+                        <option value="potential">Potential</option>
+                        <option value="manual_review">Manual review</option>
+                    </select>
+                </div>
+                <div class="filter-card">
+                    <label for="scannerFilter">Scanner</label>
+                    <select id="scannerFilter" onchange="applyFilters()">
+                        <option value="">All scanners</option>
+                        {''.join(f'<option value="{HTMLReporter._escape_html(str(name).lower().replace(" ", "_"))}">{HTMLReporter._escape_html(str(name))}</option>' for name in sorted(set([f.get("scanner", "unknown") for f in findings])) )}
+                    </select>
+                </div>
+                <div class="filter-card">
+                    <label for="textFilter">Search text</label>
+                    <input id="textFilter" type="text" placeholder="Search findings..." oninput="applyFilters()"/>
+                </div>
+            </div>
             {findings_html if findings else '<p style="text-align: center; color: #666; padding: 40px;">No security findings detected.</p>'}
         </div>
         
@@ -580,6 +669,25 @@ class HTMLReporter:
             setTimeout(() => {{
                 button.textContent = 'Copy';
             }}, 2000);
+        }});
+    }}
+
+    function applyFilters() {{
+        const severity = document.getElementById('severityFilter').value;
+        const status = document.getElementById('statusFilter').value;
+        const scanner = document.getElementById('scannerFilter').value;
+        const search = document.getElementById('textFilter').value.toLowerCase();
+
+        document.querySelectorAll('.finding').forEach((node) => {{
+            const nodeSeverity = node.dataset.severity || '';
+            const nodeStatus = node.dataset.status || '';
+            const nodeScanner = node.dataset.scanner || '';
+            const text = node.textContent.toLowerCase();
+            const visible = (!severity || nodeSeverity === severity)
+                && (!status || nodeStatus === status)
+                && (!scanner || nodeScanner === scanner)
+                && (!search || text.includes(search));
+            node.style.display = visible ? 'block' : 'none';
         }});
     }}
     </script>
@@ -642,7 +750,7 @@ class HTMLReporter:
             cwe_html = f'<div class="cwe-badge">{cwe}</div>' if cwe else ''
             
             finding_html = f"""
-            <div class="finding {severity}">
+            <div class="finding {severity}" data-severity="{HTMLReporter._escape_html(severity)}" data-status="{HTMLReporter._escape_html(status)}" data-scanner="{HTMLReporter._escape_html(str(scanner).lower().replace(' ', '_'))}">
                 <div class="finding-header">
                     <div class="finding-title">{HTMLReporter._escape_html(title)}</div>
                     <div class="severity-badge severity-{severity}">{severity.upper()}</div>

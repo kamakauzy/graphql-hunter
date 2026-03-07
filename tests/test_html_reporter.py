@@ -61,6 +61,8 @@ class TestHTMLReporter(unittest.TestCase):
         self.assertIn("Scanner: introspection", html)
         self.assertIn("Status: confirmed", html)
         self.assertIn("Confidence: confirmed", html)
+        self.assertIn("severityFilter", html)
+        self.assertIn("applyFilters()", html)
 
 
 if __name__ == "__main__":
