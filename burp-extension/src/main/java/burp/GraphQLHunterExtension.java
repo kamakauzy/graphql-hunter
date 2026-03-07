@@ -60,6 +60,7 @@ public final class GraphQLHunterExtension implements BurpExtension
         {
             tab.importRequest(request);
         }
+        logger.info("Imported GraphQL request into the GraphQL Hunter tab.");
     }
 
     private synchronized void persistState()

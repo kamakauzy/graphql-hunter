@@ -95,6 +95,42 @@ python graphql-hunter.py -u https://api.example.com/graphql --safe-mode
 python graphql-hunter.py -u https://api.example.com/graphql -p stealth --delay 2
 ```
 
+### Burp Suite Professional Addon (`.jar`)
+
+This repository now also includes a **native Burp Suite Professional addon** under `burp-extension/`.
+
+What it does today:
+- installs as a **Java `.jar`** in Burp Pro
+- adds a **GraphQL Hunter** suite tab
+- imports GraphQL requests from Burp via the context menu
+- runs focused native checks against the imported endpoint:
+  - introspection
+  - information disclosure
+  - auth exposure differentials
+  - batching
+  - lightweight error-based injection probes
+
+The Burp addon is **additive**. The existing Python CLI remains the primary standalone workflow and is unchanged.
+
+Build the Burp addon:
+
+```bash
+cd burp-extension
+./gradlew clean fatJar test
+```
+
+Artifact:
+
+```bash
+burp-extension/build/libs/GraphQLHunterBurp.jar
+```
+
+Load it in Burp Suite Professional:
+1. Open **Extensions**.
+2. Add a new **Java** extension.
+3. Select `burp-extension/build/libs/GraphQLHunterBurp.jar`.
+4. Use Burp's HTTP message context menu to send a GraphQL request to the **GraphQL Hunter** tab.
+
 ## Usage Guide
 
 ### Scan Profiles
@@ -912,6 +948,7 @@ python3 -m unittest discover -s tests -p "test_*.py"
 ```
 graphql-hunter/
 ├── graphql-hunter.py           # The main show
+├── burp-extension/             # Native Burp Suite Professional addon (.jar)
 ├── requirements.txt            # Dependencies (not many!)
 ├── README.md                   # You are here
 ├── quickstart.bat              # For Windows folks
