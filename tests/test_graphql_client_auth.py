@@ -61,6 +61,19 @@ class _FakeAuthManager:
         return False
 
 
+class _RoutingSession:
+    def __init__(self):
+        self.calls = []
+        self.cookies = {}
+
+    def post(self, url, headers=None, json=None, proxies=None, timeout=None, verify=None):
+        headers = headers or {}
+        self.calls.append({"url": url, "headers": headers, "json": json})
+        if "Authorization" in headers:
+            return _FakeResponse(status_code=200, json_obj={"data": {"viewer": {"id": "1"}}}, text='{"data":{"viewer":{"id":"1"}}}')
+        return _FakeResponse(status_code=401, json_obj={"errors": [{"message": "Unauthorized"}]}, text='{"errors":[{"message":"Unauthorized"}]}')
+
+
 class TestGraphQLClientAuth(unittest.TestCase):
     def test_retry_on_auth_failure(self):
         sess = _FakeSession(
@@ -107,6 +120,36 @@ class TestGraphQLClientAuth(unittest.TestCase):
         self.assertIn("***REDACTED***", s)
         self.assertNotIn("supersecret", s)
         self.assertNotIn("Bearer abc.def.ghi", s)
+
+    def test_validate_auth_detects_required_auth(self):
+        with patch.object(gqlc.requests, "Session", side_effect=lambda: _RoutingSession()):
+            c = gqlc.GraphQLClient(
+                url="https://x/graphql",
+                headers={"Content-Type": "application/json", "Authorization": "Bearer TOKEN123"},
+                test_connection=False,
+            )
+            result = c.validate_auth(test_query="{ viewer { id } }")
+
+        self.assertTrue(result["auth_working"])
+        self.assertTrue(result["auth_required"])
+        self.assertEqual(result["status_with_auth"], 200)
+        self.assertEqual(result["status_without_auth"], 401)
+
+    def test_validate_auth_detects_no_auth_requirement_when_responses_match(self):
+        class _SameSession(_RoutingSession):
+            def post(self, url, headers=None, json=None, proxies=None, timeout=None, verify=None):
+                return _FakeResponse(status_code=200, json_obj={"data": {"__typename": "Query"}}, text='{"data":{"__typename":"Query"}}')
+
+        with patch.object(gqlc.requests, "Session", side_effect=lambda: _SameSession()):
+            c = gqlc.GraphQLClient(
+                url="https://x/graphql",
+                headers={"Content-Type": "application/json", "Authorization": "Bearer TOKEN123"},
+                test_connection=False,
+            )
+            result = c.validate_auth(test_query="{ __typename }")
+
+        self.assertFalse(result["auth_required"])
+        self.assertFalse(result["auth_working"])
 
 
 if __name__ == "__main__":

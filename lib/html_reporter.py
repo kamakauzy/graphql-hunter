@@ -5,6 +5,7 @@ HTML Report Generator for GraphQL Hunter
 
 from typing import List, Dict
 from datetime import datetime
+import json
 
 
 class HTMLReporter:
@@ -41,30 +42,19 @@ class HTMLReporter:
         except Exception:
             pass  # If banner not found, just skip it
         
-        # Get severity counts - count from actual findings
-        severity_counts = {
-            'CRITICAL': sum(1 for f in findings if f.get('severity', '').upper() == 'CRITICAL'),
-            'HIGH': sum(1 for f in findings if f.get('severity', '').upper() == 'HIGH'),
-            'MEDIUM': sum(1 for f in findings if f.get('severity', '').upper() == 'MEDIUM'),
-            'LOW': sum(1 for f in findings if f.get('severity', '').upper() == 'LOW'),
-            'INFO': sum(1 for f in findings if f.get('severity', '').upper() == 'INFO')
-        }
-        
-        total = sum(severity_counts.values())
-        
-        # Calculate risk level based on severity counts
-        if severity_counts['CRITICAL'] > 0:
-            risk_level = 'CRITICAL'
-        elif severity_counts['HIGH'] > 0:
-            risk_level = 'HIGH'
-        elif severity_counts['MEDIUM'] > 0:
-            risk_level = 'MEDIUM'
-        elif severity_counts['LOW'] > 0:
-            risk_level = 'LOW'
-        elif severity_counts['INFO'] > 0:
-            risk_level = 'INFO'
-        else:
-            risk_level = 'INFO'
+        severity_counts = dict((summary or {}).get('by_severity') or {})
+        if not severity_counts:
+            severity_counts = {
+                'CRITICAL': sum(1 for f in findings if f.get('severity', '').upper() == 'CRITICAL'),
+                'HIGH': sum(1 for f in findings if f.get('severity', '').upper() == 'HIGH'),
+                'MEDIUM': sum(1 for f in findings if f.get('severity', '').upper() == 'MEDIUM'),
+                'LOW': sum(1 for f in findings if f.get('severity', '').upper() == 'LOW'),
+                'INFO': sum(1 for f in findings if f.get('severity', '').upper() == 'INFO')
+            }
+
+        status_counts = dict((summary or {}).get('by_status') or {})
+        total = int((summary or {}).get('total') or sum(severity_counts.values()))
+        risk_level = (summary or {}).get('risk_level') or 'MINIMAL'
         
         # Build findings HTML
         findings_html = HTMLReporter._build_findings_html(findings)
@@ -74,7 +64,7 @@ class HTMLReporter:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GraphQL Hunter Security Report - {metadata.get('target', 'Unknown')}</title>
+    <title>GraphQL Hunter Security Report - {HTMLReporter._escape_html(metadata.get('target', 'Unknown'))}</title>
     <style>
         * {{
             margin: 0;
@@ -494,15 +484,15 @@ class HTMLReporter:
             <div class="metadata-grid">
                 <div class="metadata-item">
                     <label>Target URL</label>
-                    <value>{metadata.get('target', 'N/A')}</value>
+                    <value>{HTMLReporter._escape_html(metadata.get('target', 'N/A'))}</value>
                 </div>
                 <div class="metadata-item">
                     <label>Scan Profile</label>
-                    <value>{metadata.get('profile', 'N/A').upper()}</value>
+                    <value>{HTMLReporter._escape_html(metadata.get('profile', 'N/A').upper())}</value>
                 </div>
                 <div class="metadata-item">
                     <label>Scan Date</label>
-                    <value>{metadata.get('timestamp', 'N/A')}</value>
+                    <value>{HTMLReporter._escape_html(metadata.get('timestamp', 'N/A'))}</value>
                 </div>
                 <div class="metadata-item">
                     <label>Safe Mode</label>
@@ -540,6 +530,11 @@ class HTMLReporter:
             </p>
             <p style="text-align: center; margin-top: 15px; color: #666;">
                 Total Findings: <strong>{total}</strong>
+            </p>
+            <p style="text-align: center; margin-top: 10px; color: #666;">
+                Confirmed: <strong>{status_counts.get('confirmed', 0)}</strong> ·
+                Potential: <strong>{status_counts.get('potential', 0)}</strong> ·
+                Manual review: <strong>{status_counts.get('manual_review', 0)}</strong>
             </p>
         </div>
         
@@ -612,11 +607,14 @@ class HTMLReporter:
             cwe = finding.get('cwe', '')
             evidence = finding.get('evidence', {})
             poc = finding.get('poc', '')
+            scanner = finding.get('scanner', 'unknown')
+            status = finding.get('status', 'potential')
+            confidence = (finding.get('confidence') or {}).get('level', 'unknown')
             
             # Build evidence HTML
             evidence_html = ''
             if evidence:
-                evidence_str = '\n'.join([f"{k}: {v}" for k, v in evidence.items()])
+                evidence_str = json.dumps(evidence, indent=2, sort_keys=True)
                 evidence_html = f'<div class="evidence"><pre>{HTMLReporter._escape_html(evidence_str)}</pre></div>'
             
             # POC section
@@ -640,6 +638,10 @@ class HTMLReporter:
                 <div class="finding-header">
                     <div class="finding-title">{HTMLReporter._escape_html(title)}</div>
                     <div class="severity-badge severity-{severity}">{severity.upper()}</div>
+                </div>
+                <div class="finding-section">
+                    <h3>Metadata</h3>
+                    <p>Scanner: {HTMLReporter._escape_html(scanner)} · Status: {HTMLReporter._escape_html(status)} · Confidence: {HTMLReporter._escape_html(confidence)}</p>
                 </div>
                 
                 <div class="finding-section">

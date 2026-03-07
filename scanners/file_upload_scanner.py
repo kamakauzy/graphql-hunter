@@ -121,6 +121,10 @@ class FileUploadScanner:
             impact="File uploads can be vulnerable to: 1) Path traversal allowing access to sensitive files, 2) Malicious file execution if files are stored in web-accessible directories, 3) DoS via oversized files, 4) Filename injection attacks.",
             remediation="Implement: 1) Strict filename validation (whitelist allowed characters), 2) Path sanitization to prevent directory traversal, 3) File type validation (check MIME type, not just extension), 4) File size limits, 5) Store uploads outside web root, 6) Scan uploaded files for malware, 7) Use unique, random filenames.",
             cwe="CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+            scanner="file_upload",
+            classification={'kind': 'manual_review', 'family': 'upload'},
+            confidence={'level': 'low', 'reasons': ['Schema confirmed a file upload surface, but multipart upload exploitability was not exercised']},
+            manual_verification_required=True,
             evidence={
                 'mutation': mutation_name,
                 'upload_argument': upload_arg.get('name'),
@@ -153,11 +157,15 @@ class FileUploadScanner:
         
         findings.append(create_finding(
             title="File Upload Size Limit Testing Recommended",
-            severity="MEDIUM",
+            severity="INFO",
             description=f"Mutation {mutation_name} accepts file uploads. Test with oversized files to verify size limits are enforced.",
             impact="Without proper size limits, attackers can upload extremely large files to consume server storage and memory, potentially causing DoS. Large file processing can also cause timeouts or resource exhaustion.",
             remediation="Implement strict file size limits (e.g., 10-50MB for images, 100MB for documents). Reject files exceeding limits before processing. Consider streaming uploads for large files. Monitor upload sizes and rate limit large uploads.",
             cwe="CWE-400: Uncontrolled Resource Consumption",
+            scanner="file_upload",
+            classification={'kind': 'manual_review', 'family': 'upload'},
+            confidence={'level': 'low', 'reasons': ['Upload surface exists, but oversized multipart handling was not exercised automatically']},
+            manual_verification_required=True,
             evidence={
                 'mutation': mutation_name,
                 'recommended_test_sizes_mb': [size // (1024 * 1024) for size in large_file_sizes],
@@ -184,11 +192,15 @@ class FileUploadScanner:
         
         findings.append(create_finding(
             title="File Upload Extension Validation Testing Recommended",
-            severity="MEDIUM",
+            severity="INFO",
             description=f"Mutation {mutation_name} accepts file uploads. Test with malicious file extensions to verify proper validation.",
             impact="If file type validation is insufficient, attackers may upload executable files or scripts that could be executed on the server, leading to remote code execution. Double extension attacks (e.g., 'file.php.jpg') may bypass validation.",
             remediation="Implement strict file type validation: 1) Check MIME type (not just extension), 2) Use allowlist of allowed file types, 3) Scan file contents (magic bytes), 4) Reject files with double extensions, 5) Rename uploaded files to safe extensions, 6) Store uploads outside web-accessible directories.",
             cwe="CWE-434: Unrestricted Upload of File with Dangerous Type",
+            scanner="file_upload",
+            classification={'kind': 'manual_review', 'family': 'upload'},
+            confidence={'level': 'low', 'reasons': ['Upload surface exists, but file-type enforcement was not exercised automatically']},
+            manual_verification_required=True,
             evidence={
                 'mutation': mutation_name,
                 'malicious_extensions': malicious_extensions,
@@ -225,6 +237,10 @@ class FileUploadScanner:
             impact="Filename injection can allow: 1) Command injection if filenames are used in shell commands, 2) Path traversal if filenames are not sanitized, 3) XSS if filenames are displayed without encoding.",
             remediation="Sanitize filenames: 1) Remove or encode special characters, 2) Limit filename length, 3) Use whitelist of allowed characters, 4) Generate unique filenames server-side, 5) Never use user-provided filenames in shell commands.",
             cwe="CWE-78: OS Command Injection",
+            scanner="file_upload",
+            classification={'kind': 'manual_review', 'family': 'upload'},
+            confidence={'level': 'low', 'reasons': ['Upload surface exists, but filename handling was not exercised automatically']},
+            manual_verification_required=True,
             evidence={
                 'mutation': mutation_name,
                 'injection_payloads': injection_payloads,

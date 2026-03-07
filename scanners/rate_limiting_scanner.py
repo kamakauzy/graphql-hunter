@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 from graphql_client import GraphQLClient
 from reporter import Reporter
 from utils import create_finding
+from introspection import SchemaParser
 from typing import List, Dict
 import time
 import concurrent.futures
@@ -126,6 +127,9 @@ class RateLimitingScanner:
                 impact="Rate limiting helps protect against DoS attacks and abuse. This is a positive security control.",
                 remediation="Ensure rate limiting is properly configured with appropriate thresholds and reset windows.",
                 cwe="CWE-307: Improper Restriction of Excessive Authentication Attempts",
+                scanner="rate_limiting",
+                classification={'kind': 'control', 'family': 'dos'},
+                confidence={'level': 'confirmed', 'reasons': ['Burst test produced HTTP 429 responses']},
                 evidence={
                     'total_requests': self.max_requests,
                     'rate_limited_requests': rate_limited,
@@ -145,6 +149,9 @@ class RateLimitingScanner:
                 impact="High error rate under load may indicate rate limiting, which is a positive security control.",
                 remediation="Verify rate limiting configuration and ensure it's properly tuned for legitimate use cases.",
                 cwe="CWE-307: Improper Restriction of Excessive Authentication Attempts",
+                scanner="rate_limiting",
+                classification={'kind': 'control', 'family': 'dos'},
+                confidence={'level': 'low', 'reasons': ['High error rate under load may indicate a control, but no explicit rate-limit signal was observed']},
                 evidence={
                     'total_requests': self.max_requests,
                     'error_count': error_count,
@@ -164,6 +171,9 @@ class RateLimitingScanner:
                 impact="Without rate limiting, attackers can flood the API with requests, potentially causing DoS or enabling brute-force attacks.",
                 remediation="Implement rate limiting at the API gateway or application level. Consider per-IP, per-user, and per-endpoint rate limits. Recommended: 100-1000 requests per minute per IP.",
                 cwe="CWE-307: Improper Restriction of Excessive Authentication Attempts",
+                scanner="rate_limiting",
+                classification={'kind': 'hardening_gap', 'family': 'dos'},
+                confidence={'level': 'medium', 'reasons': ['Burst test completed without 429 responses or strong throttling signals']},
                 evidence={
                     'total_requests': self.max_requests,
                     'successful_requests': self.max_requests - error_count,
@@ -180,14 +190,28 @@ class RateLimitingScanner:
     def _test_rate_limit_headers(self) -> List[Dict]:
         """Check for rate limit headers in responses"""
         findings = []
-        
-        # Make a few requests to check headers
-        test_query = '{ __typename }'
-        
-        # We need to check response headers, but our client doesn't expose them easily
-        # This is a placeholder - would need to enhance GraphQLClient to return headers
-        # For now, we'll note this limitation
-        
+
+        result = self.client.query('{ __typename }')
+        headers = {str(key).lower(): value for key, value in (result.get('_headers') or {}).items()}
+        rate_headers = {
+            key: value for key, value in headers.items()
+            if key.startswith('x-ratelimit') or key in {'ratelimit-limit', 'ratelimit-remaining', 'retry-after'}
+        }
+
+        if rate_headers:
+            findings.append(create_finding(
+                title="Rate Limit Headers Present",
+                severity="INFO",
+                description="The endpoint exposes rate-limiting headers in responses, indicating explicit throttling metadata is available.",
+                impact="Visible rate-limit headers help clients back off appropriately and confirm that rate-limiting controls are in place.",
+                remediation="No action needed. Ensure the headers reflect the true enforcement policy and do not leak sensitive implementation detail.",
+                scanner="rate_limiting",
+                classification={'kind': 'control', 'family': 'dos'},
+                confidence={'level': 'confirmed', 'reasons': ['Response headers contained explicit rate-limit metadata']},
+                evidence={'rate_limit_headers': rate_headers},
+                url=self.client.url
+            ))
+
         return findings
     
     def _test_mutation_rate_limits(self) -> List[Dict]:
@@ -212,29 +236,14 @@ class RateLimitingScanner:
         if not test_mutation:
             return findings
         
+        parser = SchemaParser(self.client.schema)
+        built = parser.build_operation(test_mutation, operation_kind='mutation')
+        if not built.get('testable'):
+            return findings
+
         mutation_name = test_mutation.get('name')
-        args = test_mutation.get('args', [])
-        
-        # Build mutation with minimal variables
-        variables = {}
-        for arg in args[:2]:
-            arg_name = arg.get('name')
-            arg_type = self._extract_type_name(arg.get('type', {}))
-            
-            if arg_type == 'String' or arg_type == 'ID':
-                variables[arg_name] = "test"
-            elif arg_type == 'Int':
-                variables[arg_name] = 1
-            elif arg_type == 'Boolean':
-                variables[arg_name] = True
-        
-        mutation_query = f'mutation {{ {mutation_name}'
-        if variables:
-            var_decl = ', '.join([f'${k}: {self._get_type_string(args, k)}' for k in variables.keys()])
-            arg_call = ', '.join([f'{k}: ${k}' for k in variables.keys()])
-            mutation_query = f'mutation TestMutation({var_decl}) {{ {mutation_name}({arg_call}) {{ __typename }} }}'
-        else:
-            mutation_query = f'mutation {{ {mutation_name} {{ __typename }} }}'
+        mutation_query = built['query']
+        variables = built.get('variables')
         
         # Test with fewer requests for mutations (more aggressive)
         mutation_requests = min(50, self.max_requests // 2)
@@ -253,6 +262,9 @@ class RateLimitingScanner:
                 description=f"Mutation {mutation_name} is rate limited, which is a positive security control.",
                 impact="Rate limiting on mutations helps prevent abuse and DoS attacks.",
                 remediation="Ensure mutation rate limits are appropriately configured.",
+                scanner="rate_limiting",
+                classification={'kind': 'control', 'family': 'dos'},
+                confidence={'level': 'confirmed', 'reasons': ['Mutation burst triggered HTTP 429 response']},
                 evidence={
                     'mutation': mutation_name,
                     'rate_limited': True
@@ -267,6 +279,10 @@ class RateLimitingScanner:
                 description=f"Mutation {mutation_name} did not return rate limiting responses. Mutations should have stricter rate limits than queries.",
                 impact="Mutations can modify data and should be protected with rate limiting to prevent abuse.",
                 remediation="Implement rate limiting specifically for mutations. Consider lower limits than queries (e.g., 10-50 requests per minute).",
+                scanner="rate_limiting",
+                classification={'kind': 'hardening_gap', 'family': 'dos'},
+                confidence={'level': 'low', 'reasons': ['Mutation burst did not trigger explicit throttling, but behavior can depend on server-side business logic']},
+                manual_verification_required=True,
                 evidence={
                     'mutation': mutation_name,
                     'test_requests': mutation_requests

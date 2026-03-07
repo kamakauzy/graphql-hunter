@@ -75,6 +75,9 @@ class BatchingScanner:
                         impact="Query batching can be exploited for various attacks including: rate limit bypass, credential stuffing, resource exhaustion, and amplification attacks where one HTTP request triggers multiple expensive operations.",
                         remediation="Consider disabling query batching or implementing strict limits. If batching is required, implement: per-batch rate limiting, maximum batch size limits, and complexity analysis that considers the entire batch.",
                         cwe="CWE-400: Uncontrolled Resource Consumption",
+                        scanner="batching",
+                        classification={'kind': 'hardening_gap', 'family': 'dos'},
+                        confidence={'level': 'confirmed', 'reasons': ['Endpoint executed multiple GraphQL operations from a single batched HTTP request']},
                         evidence={
                             'batch_size_tested': len(batch),
                             'successful_queries': successful
@@ -114,6 +117,9 @@ class BatchingScanner:
                             impact="Large batch sizes can be exploited for severe resource exhaustion attacks. An attacker could send batches of expensive queries to overwhelm the server.",
                             remediation="Implement strict batch size limits (recommended: 5-10 queries maximum). Configure your GraphQL server to reject batches above this threshold.",
                             cwe="CWE-400: Uncontrolled Resource Consumption",
+                            scanner="batching",
+                            classification={'kind': 'hardening_gap', 'family': 'dos'},
+                            confidence={'level': 'confirmed', 'reasons': ['Large batched request was accepted and mostly executed successfully']},
                             evidence={
                                 'batch_size': size,
                                 'successful_queries': successful
@@ -129,6 +135,9 @@ class BatchingScanner:
                     description=f"The server properly limits batch sizes. Batch of {size} was rejected or limited.",
                     impact="None - this is a security best practice.",
                     remediation="No action needed. Keep batch limiting enabled.",
+                    scanner="batching",
+                    classification={'kind': 'control', 'family': 'dos'},
+                    confidence={'level': 'confirmed', 'reasons': ['Large batched request was rejected or heavily limited']},
                     evidence={
                         'batch_size_limit': size
                     },

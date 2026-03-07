@@ -84,6 +84,9 @@ class DoSScanner:
                     impact="Attackers can craft deeply nested queries to consume excessive server resources, potentially causing service degradation or denial of service.",
                     remediation="Implement query depth limiting. Most GraphQL servers support a maximum query depth configuration. Recommended limit: 5-7 levels.",
                     cwe="CWE-400: Uncontrolled Resource Consumption",
+                    scanner="dos",
+                    classification={'kind': 'hardening_gap', 'family': 'dos'},
+                    confidence={'level': 'confirmed', 'reasons': ['Increasing query depth caused a request timeout']},
                     evidence={
                         'depth': depth,
                         'timeout': True
@@ -103,6 +106,9 @@ class DoSScanner:
                             description=f"The server properly rejects queries exceeding depth {depth}, indicating depth limiting is implemented.",
                             impact="None - this is the recommended secure configuration.",
                             remediation="No action needed. Keep depth limiting enabled.",
+                            scanner="dos",
+                            classification={'kind': 'control', 'family': 'dos'},
+                            confidence={'level': 'confirmed', 'reasons': ['Server returned a depth-limit-style validation error']},
                             evidence={
                                 'depth_limit': depth
                             },
@@ -114,11 +120,14 @@ class DoSScanner:
             if result.get('data') and depth >= 10:
                 findings.append(create_finding(
                     title="No Query Depth Limit Detected",
-                    severity="HIGH",
+                    severity="MEDIUM",
                     description=f"The server accepted a query with nesting depth of {depth} without error, suggesting no depth limiting is in place.",
                     impact="Without depth limiting, attackers can craft arbitrarily deep queries to consume excessive server resources and cause DoS.",
                     remediation="Implement query depth limiting. Configure your GraphQL server to reject queries deeper than 5-7 levels.",
                     cwe="CWE-400: Uncontrolled Resource Consumption",
+                    scanner="dos",
+                    classification={'kind': 'hardening_gap', 'family': 'dos'},
+                    confidence={'level': 'medium', 'reasons': ['Server accepted an intentionally deep query without explicit limiting']},
                     evidence={
                         'depth_tested': depth,
                         'accepted': True
@@ -150,11 +159,14 @@ class DoSScanner:
         if result.get('data') and elapsed > 2:
             findings.append(create_finding(
                 title="Large Query With Field Duplication Accepted",
-                severity="MEDIUM",
+                severity="LOW",
                 description=f"The server accepted a query with {field_count} aliased fields and took {elapsed:.2f} seconds to process.",
                 impact="Attackers can use field aliasing to multiply the work the server must do, causing resource exhaustion and potential DoS.",
                 remediation="Implement query complexity analysis that counts aliased fields. Limit the total number of fields that can be queried.",
                 cwe="CWE-400: Uncontrolled Resource Consumption",
+                scanner="dos",
+                classification={'kind': 'hardening_gap', 'family': 'dos'},
+                confidence={'level': 'low', 'reasons': ['A duplicated-field query was accepted and took noticeably longer to process']},
                 evidence={
                     'field_count': field_count,
                     'elapsed_time': elapsed
@@ -193,6 +205,10 @@ class DoSScanner:
                         description=f"The type '{type_name}' has a field '{field.get('name')}' that returns the same type, creating a potential circular reference.",
                         impact="Circular references can be exploited to create deeply nested queries that consume excessive resources if not properly limited.",
                         remediation="Ensure query depth limiting is in place to prevent exploitation of circular references. This is a common pattern but must be protected.",
+                        scanner="dos",
+                        classification={'kind': 'manual_review', 'family': 'dos'},
+                        confidence={'level': 'low', 'reasons': ['Schema contains self-referential object types, but exploitability depends on depth limiting']},
+                        manual_verification_required=True,
                         evidence={
                             'type': type_name,
                             'field': field.get('name')
@@ -225,6 +241,9 @@ class DoSScanner:
                         description="The server enforces query complexity limits, rejecting overly complex queries.",
                         impact="None - this is a security best practice that prevents DoS attacks.",
                         remediation="No action needed. Keep complexity limiting enabled.",
+                        scanner="dos",
+                        classification={'kind': 'control', 'family': 'dos'},
+                        confidence={'level': 'confirmed', 'reasons': ['Server returned a complexity-limit-specific validation error']},
                         evidence={
                             'complexity_check': 'enabled'
                         },
@@ -236,11 +255,14 @@ class DoSScanner:
         if result.get('data'):
             findings.append(create_finding(
                 title="No Query Complexity Limit Detected",
-                severity="MEDIUM",
+                severity="LOW",
                 description="The server accepted a highly complex query without error, suggesting complexity analysis may not be implemented.",
                 impact="Without complexity limits, attackers can craft expensive queries that consume excessive server resources.",
                 remediation="Implement query complexity analysis. Tools like graphql-query-complexity can help. Set appropriate complexity thresholds.",
                 cwe="CWE-400: Uncontrolled Resource Consumption",
+                scanner="dos",
+                classification={'kind': 'hardening_gap', 'family': 'dos'},
+                confidence={'level': 'low', 'reasons': ['Complex query was accepted without explicit complexity validation feedback']},
                 evidence={
                     'complex_query_accepted': True
                 },

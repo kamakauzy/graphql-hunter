@@ -81,6 +81,9 @@ class AuthBypassScanner:
                     impact="Unauthenticated introspection allows anyone to map the complete API surface, including potentially sensitive queries and mutations. This significantly aids in reconnaissance and attack planning.",
                     remediation="Require authentication for introspection queries. Implement authentication middleware that validates credentials before processing introspection requests.",
                     cwe="CWE-306: Missing Authentication for Critical Function",
+                    scanner="auth_bypass",
+                    classification={'kind': 'exposure', 'family': 'authz'},
+                    confidence={'level': 'confirmed', 'reasons': ['Unauthenticated client retrieved schema successfully']},
                     evidence={
                         'unauthenticated_introspection': 'SUCCESS'
                     },
@@ -97,11 +100,14 @@ class AuthBypassScanner:
             if result.get('data') == auth_result.get('data'):
                 findings.append(create_finding(
                     title="API Accessible Without Authentication",
-                    severity="MEDIUM",
+                    severity="LOW",
                     description="The GraphQL endpoint responds to queries without requiring authentication.",
                     impact="If the API contains sensitive data or operations, lack of authentication allows unauthorized access. This depends on what data is actually exposed.",
                     remediation="Implement authentication requirements for the GraphQL endpoint. Use middleware to validate authentication tokens before processing queries.",
                     cwe="CWE-306: Missing Authentication for Critical Function",
+                    scanner="auth_bypass",
+                    classification={'kind': 'hardening_gap', 'family': 'authz'},
+                    confidence={'level': 'medium', 'reasons': ['Unauthenticated request returned the same trivial typename response as the authenticated request']},
                     evidence={
                         'unauthenticated_query': 'SUCCESS'
                     },
@@ -152,6 +158,10 @@ class AuthBypassScanner:
                 description=f"Found {len(sensitive_queries)} queries with names suggesting sensitive operations: {', '.join(sensitive_queries[:5])}",
                 impact="These queries may expose or manipulate sensitive data. Ensure they have proper authorization checks to prevent unauthorized access.",
                 remediation="Review authorization logic for these queries. Implement field-level and object-level authorization checks. Use role-based access control (RBAC).",
+                scanner="auth_bypass",
+                classification={'kind': 'manual_review', 'family': 'authz'},
+                confidence={'level': 'low', 'reasons': ['Query names matched sensitive-operation heuristics']},
+                manual_verification_required=True,
                 evidence={
                     'sensitive_queries': sensitive_queries
                 },
@@ -162,11 +172,15 @@ class AuthBypassScanner:
         if sensitive_mutations:
             findings.append(create_finding(
                 title="Sensitive Mutations Discovered",
-                severity="MEDIUM",
+                severity="INFO",
                 description=f"Found {len(sensitive_mutations)} mutations with names suggesting privileged operations: {', '.join(sensitive_mutations[:5])}",
                 impact="These mutations can modify sensitive data or system state. If authorization is not properly implemented, attackers could perform privileged operations.",
                 remediation="Ensure all sensitive mutations require proper authentication and authorization. Implement checks for user roles and permissions before executing mutations.",
                 cwe="CWE-862: Missing Authorization",
+                scanner="auth_bypass",
+                classification={'kind': 'manual_review', 'family': 'authz'},
+                confidence={'level': 'low', 'reasons': ['Mutation names matched sensitive-operation heuristics']},
+                manual_verification_required=True,
                 evidence={
                     'sensitive_mutations': sensitive_mutations
                 },
@@ -215,6 +229,10 @@ class AuthBypassScanner:
                         impact="If field-level authorization is not implemented, users may be able to access fields they shouldn't see (e.g., other users' emails, passwords, private data).",
                         remediation="Implement field-level authorization using GraphQL middleware or resolver-level checks. Ensure users can only access their own data or data they're authorized to see.",
                         cwe="CWE-639: Authorization Bypass Through User-Controlled Key",
+                        scanner="auth_bypass",
+                        classification={'kind': 'manual_review', 'family': 'authz'},
+                        confidence={'level': 'low', 'reasons': ['Presence of User/Admin object types suggests fields worth reviewing']},
+                        manual_verification_required=True,
                         evidence={
                             'type': user_type.get('name'),
                             'field_count': len(fields),
@@ -319,6 +337,9 @@ class AuthBypassScanner:
                     impact="Rate limiting helps protect against brute-force attacks by limiting the number of login attempts.",
                     remediation="Ensure rate limiting is properly configured with appropriate thresholds and reset windows. Consider implementing progressive delays or account lockout after multiple failures.",
                     cwe="CWE-307: Improper Restriction of Excessive Authentication Attempts",
+                    scanner="auth_bypass",
+                    classification={'kind': 'control', 'family': 'authz'},
+                    confidence={'level': 'confirmed', 'reasons': ['Login mutation returned HTTP 429 after repeated failures']},
                     evidence={
                         'mutation': mutation_name,
                         'rate_limited_after_attempts': i+1,
@@ -335,6 +356,9 @@ class AuthBypassScanner:
                     impact="Account lockout helps protect against brute-force attacks by temporarily disabling accounts after multiple failed attempts.",
                     remediation="Ensure account lockout is properly configured. Consider implementing temporary lockouts (e.g., 15-30 minutes) rather than permanent locks to avoid DoS.",
                     cwe="CWE-307: Improper Restriction of Excessive Authentication Attempts",
+                    scanner="auth_bypass",
+                    classification={'kind': 'control', 'family': 'authz'},
+                    confidence={'level': 'confirmed', 'reasons': ['Login flow indicated account lockout after repeated failures']},
                     evidence={
                         'mutation': mutation_name,
                         'account_locked_after_attempts': i+1
@@ -349,6 +373,9 @@ class AuthBypassScanner:
                     description=f"Login mutation {mutation_name} requires CAPTCHA after multiple attempts, indicating CAPTCHA protection.",
                     impact="CAPTCHA helps protect against automated brute-force attacks.",
                     remediation="Ensure CAPTCHA is properly implemented and cannot be easily bypassed.",
+                    scanner="auth_bypass",
+                    classification={'kind': 'control', 'family': 'authz'},
+                    confidence={'level': 'medium', 'reasons': ['Login flow indicated CAPTCHA challenge after repeated failures']},
                     evidence={
                         'mutation': mutation_name,
                         'captcha_required': True
@@ -360,11 +387,15 @@ class AuthBypassScanner:
                 # No protection detected
                 findings.append(create_finding(
                     title="Brute-Force Protection Not Detected",
-                    severity="MEDIUM",
+                    severity="LOW",
                     description=f"Login mutation {mutation_name} did not show rate limiting, account lockout, or CAPTCHA after {brute_force_attempts} failed attempts. This may indicate missing brute-force protection.",
                     impact="Without brute-force protection, attackers can attempt unlimited password guesses, increasing the likelihood of successful account compromise.",
                     remediation="Implement brute-force protection: 1) Rate limiting (e.g., 5 attempts per 15 minutes), 2) Account lockout after multiple failures, 3) CAPTCHA after several attempts, 4) Progressive delays between attempts, 5) IP-based rate limiting.",
                     cwe="CWE-307: Improper Restriction of Excessive Authentication Attempts",
+                    scanner="auth_bypass",
+                    classification={'kind': 'hardening_gap', 'family': 'authz'},
+                    confidence={'level': 'low', 'reasons': ['Repeated failed attempts did not trigger clear protection signals, but the test is heuristic']},
+                    manual_verification_required=True,
                     evidence={
                         'mutation': mutation_name,
                         'attempts_tested': brute_force_attempts,

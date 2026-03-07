@@ -83,6 +83,9 @@ class InfoDisclosureScanner:
                             impact="Stack traces can reveal sensitive information about the application's technology stack, file structure, library versions, and internal logic. This information aids attackers in identifying potential vulnerabilities.",
                             remediation="Configure the GraphQL server to suppress stack traces in production. Return generic error messages to clients while logging detailed errors server-side.",
                             cwe="CWE-209: Generation of Error Message Containing Sensitive Information",
+                            scanner="info_disclosure",
+                            classification={'kind': 'exposure', 'family': 'graphql_surface'},
+                            confidence={'level': 'confirmed', 'reasons': ['Malformed query returned stack-trace-like content in error response']},
                             evidence={
                                 'query': query,
                                 'error': error_msg[:500]
@@ -114,6 +117,9 @@ class InfoDisclosureScanner:
                         impact="Field suggestions help attackers enumerate valid fields through typos and similar queries, making reconnaissance easier.",
                         remediation="Disable field suggestions in production environments. This is often controlled by GraphQL server configuration.",
                         cwe="CWE-200: Exposure of Sensitive Information to an Unauthorized Actor",
+                        scanner="info_disclosure",
+                        classification={'kind': 'exposure', 'family': 'graphql_surface'},
+                        confidence={'level': 'confirmed', 'reasons': ['Error response included field suggestion hints']},
                         evidence={
                             'query': test_query,
                             'error_message': error_msg
@@ -150,6 +156,9 @@ class InfoDisclosureScanner:
                 description=f"The GraphQL endpoint returns debug-related headers: {', '.join(found_debug_headers)}. These may expose performance metrics or debugging information.",
                 impact="Debug headers can reveal performance characteristics, query execution details, or other internal information useful to attackers.",
                 remediation="Disable debug headers in production environments. Remove or configure middleware that adds tracing/debug information.",
+                scanner="info_disclosure",
+                classification={'kind': 'exposure', 'family': 'graphql_surface'},
+                confidence={'level': 'confirmed', 'reasons': ['Response headers exposed debugging or tracing metadata']},
                 evidence={
                     'headers': found_debug_headers
                 },
@@ -164,6 +173,9 @@ class InfoDisclosureScanner:
                 description="Apollo tracing is enabled, which exposes detailed query execution timing and resolver information in the response.",
                 impact="Tracing data reveals internal query execution paths, timing information, and resolver details that could aid attackers in understanding the application architecture.",
                 remediation="Disable Apollo tracing in production. Set `tracing: false` in Apollo Server configuration.",
+                scanner="info_disclosure",
+                classification={'kind': 'exposure', 'family': 'graphql_surface'},
+                confidence={'level': 'confirmed', 'reasons': ['GraphQL extensions included tracing data']},
                 evidence={
                     'tracing_enabled': True
                 },
@@ -200,6 +212,9 @@ class InfoDisclosureScanner:
                         description="The GraphQL endpoint returns very detailed error messages including validation details, line numbers, and schema information.",
                         impact="Verbose error messages help attackers understand the schema structure and validation rules, aiding in crafting valid attacks.",
                         remediation="Configure the GraphQL server to return less detailed error messages in production while logging full details server-side.",
+                        scanner="info_disclosure",
+                        classification={'kind': 'exposure', 'family': 'graphql_surface'},
+                        confidence={'level': 'medium', 'reasons': ['Validation error revealed detailed schema and line/column context']},
                         evidence={
                             'error_message': error_msg
                         },

@@ -54,6 +54,9 @@ class IntrospectionScanner:
                 impact="Attackers can map the entire API surface area, discover hidden or undocumented endpoints, and identify potential attack vectors. This significantly aids reconnaissance and can expose sensitive functionality.",
                 remediation="Disable introspection in production environments. In most GraphQL implementations, this can be done through configuration settings. Keep introspection enabled only in development/testing environments.",
                 cwe="CWE-200: Exposure of Sensitive Information to an Unauthorized Actor",
+                scanner="introspection",
+                classification={'kind': 'exposure', 'family': 'graphql_surface'},
+                confidence={'level': 'confirmed', 'reasons': ['Introspection query returned a schema document']},
                 evidence={
                     'introspection_response': 'Full schema retrieved successfully'
                 },
@@ -89,6 +92,10 @@ class IntrospectionScanner:
                     description=f"Found {len(sensitive_fields)} fields with names suggesting they may contain sensitive data. Examples: {field_list}",
                     impact="These fields may contain sensitive information such as passwords, tokens, or private data. If accessible without proper authorization, this could lead to information disclosure.",
                     remediation="Review access controls for these fields. Ensure proper authentication and authorization checks are in place. Consider field-level permissions.",
+                    scanner="introspection",
+                    classification={'kind': 'manual_review', 'family': 'graphql_surface'},
+                    confidence={'level': 'low', 'reasons': ['Field names are heuristic indicators, not proof of exposure']},
+                    manual_verification_required=True,
                     evidence={
                         'sensitive_fields': sensitive_fields[:10]
                     },
@@ -107,6 +114,9 @@ class IntrospectionScanner:
                     description=f"The schema contains {len(deprecated)} deprecated fields. These may indicate legacy functionality or planned breaking changes.",
                     impact="Deprecated fields may have known vulnerabilities or may be removed in future versions. They could also indicate older, less secure code paths.",
                     remediation="Review deprecated fields and migrate away from them. Remove deprecated fields when no longer needed to reduce attack surface.",
+                    scanner="introspection",
+                    classification={'kind': 'informational', 'family': 'graphql_surface'},
+                    confidence={'level': 'medium', 'reasons': ['Schema metadata confirmed deprecated fields']},
                     evidence={
                         'deprecated_fields': deprecated[:10]
                     },
@@ -125,6 +135,10 @@ class IntrospectionScanner:
                     description=f"Found {len(fields_with_args)} fields that accept arguments. These are potential injection points that should be tested.",
                     impact="Fields accepting arguments are common injection vectors for SQL injection, NoSQL injection, and other input-based attacks.",
                     remediation="Ensure all fields with arguments properly validate and sanitize input. Use parameterized queries and input validation.",
+                    scanner="introspection",
+                    classification={'kind': 'manual_review', 'family': 'graphql_surface'},
+                    confidence={'level': 'low', 'reasons': ['Argument-bearing fields are candidate attack surfaces only']},
+                    manual_verification_required=True,
                     evidence={
                         'fields_count': len(fields_with_args),
                         'sample_fields': fields_with_args[:5]
@@ -144,6 +158,10 @@ class IntrospectionScanner:
                     description=f"The API exposes {mutation_count} mutations that can modify data.",
                     impact="Mutations can modify server-side state. If not properly protected, they could be exploited for unauthorized data modification.",
                     remediation="Ensure all mutations require proper authentication and authorization. Implement rate limiting on sensitive mutations.",
+                    scanner="introspection",
+                    classification={'kind': 'manual_review', 'family': 'graphql_surface'},
+                    confidence={'level': 'low', 'reasons': ['Mutation availability increases attack surface but is not inherently vulnerable']},
+                    manual_verification_required=True,
                     evidence={
                         'mutation_count': mutation_count
                     },
@@ -162,6 +180,10 @@ class IntrospectionScanner:
                     description=f"The API supports {sub_count} real-time subscriptions.",
                     impact="Subscriptions maintain persistent connections. If not properly secured, they could be exploited for DoS attacks or unauthorized data access.",
                     remediation="Implement connection limits and rate limiting for subscriptions. Ensure proper authentication for subscription endpoints.",
+                    scanner="introspection",
+                    classification={'kind': 'manual_review', 'family': 'graphql_surface'},
+                    confidence={'level': 'low', 'reasons': ['Subscription availability is advisory until security controls are exercised']},
+                    manual_verification_required=True,
                     evidence={
                         'subscription_count': sub_count
                     },
@@ -178,6 +200,9 @@ class IntrospectionScanner:
                 description="GraphQL introspection is properly disabled, which is a security best practice for production environments.",
                 impact="None - this is the recommended secure configuration.",
                 remediation="No action needed. Keep introspection disabled in production.",
+                scanner="introspection",
+                classification={'kind': 'control', 'family': 'graphql_surface'},
+                confidence={'level': 'confirmed', 'reasons': ['Introspection query did not return schema data']},
             ))
         
         return findings

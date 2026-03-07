@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 from graphql_client import GraphQLClient
 from reporter import Reporter
 from utils import create_finding
+from introspection import SchemaParser
 from typing import List, Dict
 from urllib.parse import urlparse
 
@@ -86,11 +87,11 @@ class CSRFScanner:
             return findings
         
         mutation_name = test_mutation.get('name')
-        args = test_mutation.get('args', [])
+        generated = test_mutation.get('_generated_operation', {})
         
         # Build mutation
-        variables = self._build_mutation_variables(args)
-        mutation_query = self._build_mutation_query(mutation_name, args, variables)
+        variables = self._build_mutation_variables(generated)
+        mutation_query = self._build_mutation_query(mutation_name, generated, variables)
         
         # Test without Origin header
         headers_without_origin = dict(self.client.headers)
@@ -124,6 +125,9 @@ class CSRFScanner:
                 impact="Without Origin header validation, attackers can craft malicious websites that perform unauthorized mutations on behalf of authenticated users. This can lead to data modification, account takeover, or other unauthorized actions.",
                 remediation="Implement CSRF protection: 1) Validate Origin/Referer headers for state-changing operations, 2) Use CSRF tokens, 3) Implement SameSite cookie attributes, 4) Require custom headers (X-Requested-With) for mutations.",
                 cwe="CWE-352: Cross-Site Request Forgery (CSRF)",
+                scanner="csrf",
+                classification={'kind': 'vulnerability', 'family': 'csrf'},
+                confidence={'level': 'confirmed', 'reasons': ['State-changing mutation succeeded without Origin/Referer headers while authenticated cookies were present']},
                 evidence={
                     'mutation': mutation_name,
                     'origin_header': 'missing',
@@ -142,6 +146,9 @@ class CSRFScanner:
                     description=f"Mutation {mutation_name} rejected requests without Origin header, indicating CSRF protection is implemented.",
                     impact="CSRF protection helps prevent unauthorized cross-site requests.",
                     remediation="Ensure CSRF protection is consistently applied to all state-changing operations.",
+                    scanner="csrf",
+                    classification={'kind': 'control', 'family': 'csrf'},
+                    confidence={'level': 'confirmed', 'reasons': ['Mutation failed with CSRF/Origin/Referer-specific error text']},
                     evidence={
                         'mutation': mutation_name,
                         'protection_detected': True
@@ -160,10 +167,10 @@ class CSRFScanner:
             return findings
         
         mutation_name = test_mutation.get('name')
-        args = test_mutation.get('args', [])
+        generated = test_mutation.get('_generated_operation', {})
         
-        variables = self._build_mutation_variables(args)
-        mutation_query = self._build_mutation_query(mutation_name, args, variables)
+        variables = self._build_mutation_variables(generated)
+        mutation_query = self._build_mutation_query(mutation_name, generated, variables)
         
         # Get the actual origin from URL
         parsed_url = urlparse(self.client.url)
@@ -196,6 +203,9 @@ class CSRFScanner:
                 impact="Attackers can craft malicious websites that perform unauthorized mutations by sending requests with arbitrary Origin headers. This allows cross-site request forgery attacks.",
                 remediation="Validate Origin and Referer headers to match the expected domain. Reject requests with missing or mismatched Origin headers for state-changing operations.",
                 cwe="CWE-352: Cross-Site Request Forgery (CSRF)",
+                scanner="csrf",
+                classification={'kind': 'vulnerability', 'family': 'csrf'},
+                confidence={'level': 'confirmed', 'reasons': ['State-changing mutation succeeded with a forged cross-origin Origin/Referer pair']},
                 evidence={
                     'mutation': mutation_name,
                     'origin_header': 'https://evil.com',
@@ -239,6 +249,10 @@ class CSRFScanner:
                 impact="Without CSRF tokens, the application may be vulnerable to CSRF attacks if Origin/Referer validation is insufficient or can be bypassed.",
                 remediation="Implement CSRF tokens for all state-changing operations. Tokens should be unique per session and validated on the server side.",
                 cwe="CWE-352: Cross-Site Request Forgery (CSRF)",
+                scanner="csrf",
+                classification={'kind': 'hardening_gap', 'family': 'csrf'},
+                confidence={'level': 'low', 'reasons': ['No CSRF token was observed in the current session headers or cookies']},
+                manual_verification_required=True,
                 evidence={
                     'csrf_token_detected': False
                 },
@@ -251,6 +265,9 @@ class CSRFScanner:
                 description=f"CSRF token found ({csrf_token_name}), indicating CSRF protection may be implemented.",
                 impact="CSRF tokens help protect against cross-site request forgery attacks.",
                 remediation="Ensure CSRF tokens are validated for all mutations and cannot be bypassed.",
+                scanner="csrf",
+                classification={'kind': 'control', 'family': 'csrf'},
+                confidence={'level': 'medium', 'reasons': ['A likely CSRF token was present in headers or cookies']},
                 evidence={
                     'csrf_token_detected': True,
                     'token_location': csrf_token_name
@@ -262,55 +279,29 @@ class CSRFScanner:
     
     def _find_testable_mutation(self, mutations: List[Dict]) -> Dict:
         """Find a mutation suitable for testing"""
-        # Prefer mutations with minimal required arguments
+        parser = SchemaParser(self.client.schema)
         for mutation in mutations:
-            args = mutation.get('args', [])
-            # Prefer mutations with 0-2 arguments
-            if len(args) <= 2:
+            built = parser.build_operation(mutation, operation_kind='mutation')
+            if built.get('testable'):
+                mutation['_generated_operation'] = built
                 return mutation
-        
-        # Fallback to first mutation
-        if mutations:
-            return mutations[0]
-        
-        return None
+        return mutations[0] if mutations else None
     
     def _build_mutation_variables(self, args: List[Dict]) -> Dict:
         """Build variables for mutation"""
-        variables = {}
-        for arg in args[:2]:  # Limit to first 2 args
-            arg_name = arg.get('name')
-            arg_type = self._extract_type_name(arg.get('type', {}))
-            
-            if arg_type == 'String' or arg_type == 'ID':
-                variables[arg_name] = "test"
-            elif arg_type == 'Int':
-                variables[arg_name] = 1
-            elif arg_type == 'Boolean':
-                variables[arg_name] = True
-            elif arg_type == 'Float':
-                variables[arg_name] = 1.0
-        
-        return variables
+        generated = args if isinstance(args, dict) else None
+        if generated and generated.get('variables') is not None:
+            return generated['variables']
+        return {}
     
     def _build_mutation_query(self, mutation_name: str, args: List[Dict], variables: Dict) -> str:
         """Build mutation query string"""
+        generated = args if isinstance(args, dict) else None
+        if generated and generated.get('query'):
+            return generated['query']
         if not variables:
             return f'mutation {{ {mutation_name} {{ __typename }} }}'
-        
-        var_decls = []
-        var_calls = []
-        for arg_name, value in variables.items():
-            arg = next((a for a in args if a.get('name') == arg_name), None)
-            if arg:
-                arg_type = self._extract_type_name(arg.get('type', {}))
-                var_decls.append(f'${arg_name}: {arg_type}!')
-                var_calls.append(f'{arg_name}: ${arg_name}')
-        
-        var_decl_str = ', '.join(var_decls)
-        var_call_str = ', '.join(var_calls)
-        
-        return f'mutation TestCSRF({var_decl_str}) {{ {mutation_name}({var_call_str}) {{ __typename }} }}'
+        return f'mutation {{ {mutation_name} }}'
     
     def _extract_type_name(self, type_def: Dict) -> str:
         """Extract type name from type definition"""

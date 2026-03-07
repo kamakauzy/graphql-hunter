@@ -82,6 +82,9 @@ class AliasingScanner:
                         impact="Field aliasing can be exploited to multiply the cost of a single query by requesting the same expensive field multiple times under different aliases. This can lead to severe resource exhaustion and DoS.",
                         remediation="Implement query cost analysis that counts aliased fields. Each alias should contribute to the query cost. Consider limiting the total number of fields (including aliases) in a single query.",
                         cwe="CWE-400: Uncontrolled Resource Consumption",
+                        scanner="aliasing",
+                        classification={'kind': 'hardening_gap', 'family': 'dos'},
+                        confidence={'level': 'medium', 'reasons': ['Large aliased query was accepted and incurred measurable processing cost']},
                         evidence={
                             'alias_count': count,
                             'response_time': elapsed
@@ -102,6 +105,9 @@ class AliasingScanner:
                             description=f"The server properly limits field aliasing. Query with {count} aliases was rejected.",
                             impact="None - this is a security best practice.",
                             remediation="No action needed. Keep field count limiting enabled.",
+                            scanner="aliasing",
+                            classification={'kind': 'control', 'family': 'dos'},
+                            confidence={'level': 'confirmed', 'reasons': ['Large aliased query was rejected by field/alias limiting']},
                             evidence={
                                 'alias_limit': count
                             },
@@ -145,10 +151,13 @@ class AliasingScanner:
             # This finding is less severe as it depends on the specific query
             findings.append(create_finding(
                 title="Multiple Aliased Query Calls Accepted",
-                severity="MEDIUM",
+                severity="LOW",
                 description=f"The server allowed calling the same query '{query_name}' multiple times using aliases.",
                 impact="If the aliased query is expensive (e.g., database query, external API call), this could be exploited for amplification attacks.",
                 remediation="Implement query cost analysis that accounts for all aliased calls. Consider caching results for identical queries within a request.",
+                scanner="aliasing",
+                classification={'kind': 'hardening_gap', 'family': 'dos'},
+                confidence={'level': 'low', 'reasons': ['Repeated aliased calls were accepted, but backend amplification impact depends on resolver cost']},
                 evidence={
                     'query': query_name,
                     'alias_count': 20,

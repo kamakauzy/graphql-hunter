@@ -64,6 +64,9 @@ class JWTScanner:
                     impact="If JWT tokens are not properly validated, attackers may forge tokens, bypass authentication, or escalate privileges.",
                     remediation="Ensure JWT tokens are: 1) Validated on every request, 2) Use strong signing algorithms (RS256, not 'none'), 3) Have appropriate expiration times, 4) Include audience and issuer claims, 5) Are not accepted with algorithm 'none'.",
                     cwe="CWE-347: Improper Verification of Cryptographic Signature",
+                    scanner="jwt",
+                    classification={'kind': 'informational', 'family': 'jwt'},
+                    confidence={'level': 'confirmed', 'reasons': ['Authorization header contained a JWT-shaped bearer token']},
                     evidence={
                         'jwt_detected': True
                     },
@@ -89,6 +92,9 @@ class JWTScanner:
                     impact="If JWT tokens are not properly validated, attackers may forge tokens, bypass authentication, or escalate privileges.",
                     remediation="Ensure JWT tokens are: 1) Validated on every request, 2) Use strong signing algorithms (RS256, not 'none'), 3) Have appropriate expiration times, 4) Include audience and issuer claims.",
                     cwe="CWE-347: Improper Verification of Cryptographic Signature",
+                    scanner="jwt",
+                    classification={'kind': 'informational', 'family': 'jwt'},
+                    confidence={'level': 'confirmed', 'reasons': ["Custom 'Token' header contained a JWT-shaped token"]},
                     evidence={
                         'jwt_detected': True,
                         'header': 'Token'
@@ -114,9 +120,14 @@ class JWTScanner:
         # No signature for 'none' algorithm
         forged_jwt = f"{forged_header}.{forged_payload}."
         
+        token_header_name = 'Authorization' if 'Authorization' in self.client.headers else 'Token'
+
         # Create a test client with forged JWT
         test_headers = self.client.headers.copy()
-        test_headers['Authorization'] = f'Bearer {forged_jwt}'
+        if token_header_name == 'Authorization':
+            test_headers['Authorization'] = f'Bearer {forged_jwt}'
+        else:
+            test_headers['Token'] = forged_jwt
         
         test_client = GraphQLClient(
             url=self.client.url,
@@ -138,9 +149,13 @@ class JWTScanner:
                     impact="Attackers can forge any JWT token and impersonate any user, including administrators, leading to complete authentication bypass.",
                     remediation="IMMEDIATELY disable acceptance of JWT tokens with 'none' algorithm. Implement strict algorithm validation and only accept secure algorithms like RS256 or ES256.",
                     cwe="CWE-347: Improper Verification of Cryptographic Signature",
+                    scanner="jwt",
+                    classification={'kind': 'vulnerability', 'family': 'jwt'},
+                    confidence={'level': 'confirmed', 'reasons': ["Server accepted a JWT forged with alg='none' and executed an authenticated GraphQL request"]},
                     evidence={
                         'forged_token_accepted': True,
-                        'algorithm': 'none'
+                        'algorithm': 'none',
+                        'header_name': token_header_name
                     },
                     poc=f"Authorization: Bearer {forged_jwt}"
                 ))
@@ -204,6 +219,9 @@ class JWTScanner:
                         impact="If expired tokens are still accepted, attackers can use old tokens indefinitely, bypassing token expiration security controls.",
                         remediation="Ensure the server validates token expiration (exp claim) on every request and rejects expired tokens immediately.",
                         cwe="CWE-613: Improper Authentication",
+                        scanner="jwt",
+                        classification={'kind': 'hardening_gap', 'family': 'jwt'},
+                        confidence={'level': 'confirmed', 'reasons': ['Provided JWT token contained an exp claim that was already in the past']},
                         evidence={
                             'token_expired': True,
                             'exp_claim': expires_at,
@@ -222,6 +240,9 @@ class JWTScanner:
                             impact="Expired tokens should be rejected immediately. If they're still accepted, attackers can use compromised or old tokens indefinitely.",
                             remediation="IMMEDIATELY fix token validation to check the 'exp' claim and reject expired tokens. Ensure token validation happens on every request.",
                             cwe="CWE-613: Improper Authentication",
+                            scanner="jwt",
+                            classification={'kind': 'vulnerability', 'family': 'jwt'},
+                            confidence={'level': 'confirmed', 'reasons': ['Server accepted a request authenticated with a JWT whose exp claim had already expired']},
                             evidence={
                                 'expired_token_accepted': True,
                                 'exp_claim': expires_at
@@ -240,6 +261,9 @@ class JWTScanner:
                             impact="If a long-lived token is compromised, attackers can use it for an extended period. Shorter token lifetimes limit the window of opportunity for attackers.",
                             remediation="Consider implementing shorter token lifetimes (e.g., 1-4 hours) with refresh tokens for longer sessions. Implement token rotation and revocation mechanisms.",
                             cwe="CWE-613: Improper Authentication",
+                            scanner="jwt",
+                            classification={'kind': 'hardening_gap', 'family': 'jwt'},
+                            confidence={'level': 'confirmed', 'reasons': ['JWT exp claim indicates a token lifetime longer than 24 hours']},
                             evidence={
                                 'hours_until_expiry': round(hours_until_expiry, 1),
                                 'exp_claim': expires_at
@@ -257,6 +281,9 @@ class JWTScanner:
                         description=f"JWT token has expiration configured (lifetime: {token_lifetime // 3600} hours). Verify expiration is enforced server-side.",
                         impact="Token expiration helps limit the impact of token compromise. Ensure expiration is properly validated.",
                         remediation="Verify that the server checks the 'exp' claim on every request and rejects expired tokens. Implement refresh token mechanism for seamless re-authentication.",
+                        scanner="jwt",
+                        classification={'kind': 'informational', 'family': 'jwt'},
+                        confidence={'level': 'confirmed', 'reasons': ['JWT token includes iat/exp claims that describe its lifetime']},
                         evidence={
                             'token_lifetime_hours': token_lifetime // 3600,
                             'iat': iat,

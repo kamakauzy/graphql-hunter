@@ -19,6 +19,7 @@ DEFAULT_SENSITIVE_HEADERS: Set[str] = {
     "set-cookie",
     "x-api-key",
     "api-key",
+    "token",
     "x-auth-token",
     "x-csrf-token",
     "x-xsrf-token",

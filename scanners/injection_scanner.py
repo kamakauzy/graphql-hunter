@@ -9,368 +9,208 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
 from graphql_client import GraphQLClient
 from reporter import Reporter
-from utils import create_finding, detect_sql_error, detect_nosql_error
+from utils import create_finding, detect_sql_error, detect_nosql_error, extract_error_messages, extract_type_name, is_validation_error
+from introspection import SchemaParser
 from typing import List, Dict
+import yaml
 
 
 class InjectionScanner:
     """Scanner for injection vulnerabilities"""
-    
+
     def __init__(self, client: GraphQLClient, reporter: Reporter, config: Dict):
-        """
-        Initialize injection scanner
-        
-        Args:
-            client: GraphQL client instance
-            reporter: Reporter instance
-            config: Scanner configuration
-        """
         self.client = client
         self.reporter = reporter
         self.config = config
-        
-        # SQL injection payloads
-        self.sql_payloads = [
-            "' OR '1'='1",
-            "' OR 1=1--",
-            "' UNION SELECT NULL--",
-            "1' AND '1'='1",
-            "admin'--",
-            "' OR 'a'='a",
-            "1; DROP TABLE users--",
-            "' WAITFOR DELAY '0:0:5'--",
-        ]
-        
-        # NoSQL injection payloads
-        self.nosql_payloads = [
-            '{"$gt": ""}',
-            '{"$ne": null}',
-            '{"$regex": ".*"}',
-            '{$where: "1==1"}',
-        ]
-        
-        # Command injection payloads
-        self.command_payloads = [
-            "; ls -la",
-            "| whoami",
-            "`id`",
-            "$(whoami)",
-            "&& dir",
-            "; cat /etc/passwd",
-        ]
-    
+        self.sql_payloads, self.nosql_payloads, self.command_payloads = self._load_payloads()
+
+    def _load_payloads(self):
+        payload_file = Path(__file__).parent.parent / "config" / "payloads.yaml"
+        try:
+            with open(payload_file, 'r', encoding='utf-8') as handle:
+                payloads = yaml.safe_load(handle) or {}
+            sql_payloads = (
+                payloads.get('sql_injection', {}).get('basic', []) +
+                payloads.get('sql_injection', {}).get('union_based', []) +
+                payloads.get('sql_injection', {}).get('time_based', [])
+            )
+            nosql_payloads = payloads.get('nosql_injection', [])
+            command_payloads = payloads.get('command_injection', [])
+            return sql_payloads, nosql_payloads, command_payloads
+        except Exception:
+            return (
+                ["' OR '1'='1", "' OR 1=1--", "' UNION SELECT NULL--"],
+                ['{"$gt": ""}', '{"$ne": null}'],
+                ['; ls -la', '| whoami'],
+            )
+
     def scan(self) -> List[Dict]:
-        """
-        Run injection scan
-        
-        Returns:
-            List of findings
-        """
         findings = []
-        
+
         if not self.client.schema:
-            self.reporter.print_warning("Introspection not available, limited injection testing")
-            # Still try some basic tests
-            findings.extend(self._test_basic_injection())
+            self.reporter.print_warning("Introspection not available, skipping schema-aware injection tests")
             return findings
-        
-        # Get fields with arguments
+
         self.reporter.print_info("Testing SQL injection on queries with arguments...")
-        findings.extend(self._test_sql_injection())
-        
-        # Test mutations for injection vulnerabilities
+        findings.extend(self._test_query_family('query', self.client.get_queries(), self.sql_payloads[:4], detect_sql_error, "Possible SQL Injection Vulnerability", "CWE-89: SQL Injection"))
+
         self.reporter.print_info("Testing SQL injection on mutations...")
-        findings.extend(self._test_mutation_injection())
-        
+        findings.extend(self._test_query_family('mutation', self.client.get_mutations(), self.sql_payloads[:4], detect_sql_error, "Possible SQL Injection Vulnerability in Mutation", "CWE-89: SQL Injection"))
+
         if self.config.get('enable_deep_injection', True):
             self.reporter.print_info("Testing NoSQL injection...")
-            findings.extend(self._test_nosql_injection())
-            
+            findings.extend(self._test_query_family('query', self.client.get_queries(), self.nosql_payloads[:3], detect_nosql_error, "Possible NoSQL Injection Vulnerability", "CWE-943: Improper Neutralization of Special Elements in Data Query Logic"))
+
             self.reporter.print_info("Testing command injection...")
             findings.extend(self._test_command_injection())
-        
+
         return findings
-    
-    def _test_basic_injection(self) -> List[Dict]:
-        """Test basic injection when schema is not available"""
+
+    def _test_query_family(self, operation_kind: str, fields: List[Dict], payloads: List[str], detector, title: str, cwe: str) -> List[Dict]:
         findings = []
-        
-        # Try a simple SQL injection in __typename (unlikely but worth trying)
-        payload = "' OR '1'='1"
-        query = f'{{ __typename(arg: "{payload}") }}'
-        result = self.client.query(query)
-        
-        if result.get('errors'):
-            error_text = str(result['errors'])
-            if detect_sql_error(error_text):
-                findings.append(create_finding(
-                    title="Possible SQL Injection Vulnerability",
-                    severity="CRITICAL",
-                    description="The application returned SQL error messages when testing with injection payloads, indicating potential SQL injection vulnerability.",
-                    impact="SQL injection can allow attackers to read, modify, or delete database contents, bypass authentication, and potentially execute commands on the database server.",
-                    remediation="Use parameterized queries or prepared statements. Validate and sanitize all user input. Implement proper input encoding.",
-                    cwe="CWE-89: SQL Injection",
-                    evidence={
-                        'payload': payload,
-                        'error': error_text[:500]
-                    },
-                url=self.client.url
-            ))
-        
-        return findings
-    
-    def _test_sql_injection(self) -> List[Dict]:
-        """Test SQL injection on fields with arguments"""
-        findings = []
-        
-        queries = self.client.get_queries()
-        
-        # Test first few queries with arguments
-        tested_count = 0
-        max_tests = 5  # Limit testing to avoid overwhelming the API
-        
-        for query_def in queries:
-            if tested_count >= max_tests:
-                break
-            
-            query_name = query_def.get('name')
-            args = query_def.get('args', [])
-            
+        parser = SchemaParser(self.client.schema)
+        max_fields = 5
+
+        for field in fields[:max_fields]:
+            args = field.get('args', [])
             if not args:
                 continue
-            
-            # Test each argument with SQL injection payloads
-            for arg in args[:2]:  # Test first 2 args per query
+
+            baseline = parser.build_operation(field, operation_kind=operation_kind)
+            if not baseline.get('testable'):
+                continue
+
+            baseline_result = self.client.query(
+                baseline['query'],
+                variables=baseline.get('variables'),
+                operation_name=baseline.get('operation_name'),
+            )
+            baseline_errors = " | ".join(extract_error_messages(baseline_result))
+            if is_validation_error(baseline_result):
+                continue
+
+            for arg in args[:2]:
                 arg_name = arg.get('name')
-                arg_type = arg.get('type', {})
-                
-                # Only test String arguments
-                type_name = self._extract_type_name(arg_type)
-                if type_name != 'String' and type_name != 'ID':
+                arg_type_name = extract_type_name(arg.get('type', {}))
+                if arg_type_name not in {'String', 'ID'}:
                     continue
-                
-                for payload in self.sql_payloads[:3]:  # Test first 3 payloads
-                    query_str = f'query {{ {query_name}({arg_name}: "{payload}") {{ __typename }} }}'
-                    result = self.client.query(query_str)
-                    
-                    if result.get('errors'):
-                        error_text = str(result['errors'])
-                        
-                        if detect_sql_error(error_text):
-                            findings.append(create_finding(
-                                title="SQL Injection Vulnerability Detected",
-                                severity="CRITICAL",
-                                description=f"SQL error messages detected when testing {query_name}.{arg_name} with injection payload, indicating a SQL injection vulnerability.",
-                                impact="SQL injection allows attackers to manipulate database queries, potentially leading to unauthorized data access, data modification, authentication bypass, or remote code execution.",
-                                remediation="Use parameterized queries or ORM methods that prevent SQL injection. Never concatenate user input directly into SQL queries. Implement input validation.",
-                                cwe="CWE-89: SQL Injection",
-                                evidence={
-                                    'query': query_name,
-                                    'argument': arg_name,
-                                    'payload': payload,
-                                    'error': error_text[:500]
-                                },
-                                poc=query_str
-                            ))
-                            tested_count += 1
-                            return findings  # Stop after first finding
-                
-                tested_count += 1
-        
-        return findings
-    
-    def _test_nosql_injection(self) -> List[Dict]:
-        """Test NoSQL injection on fields with arguments"""
-        findings = []
-        
-        queries = self.client.get_queries()
-        
-        tested_count = 0
-        max_tests = 3
-        
-        for query_def in queries:
-            if tested_count >= max_tests:
-                break
-            
-            query_name = query_def.get('name')
-            args = query_def.get('args', [])
-            
-            if not args:
-                continue
-            
-            for arg in args[:1]:  # Test first arg only
-                arg_name = arg.get('name')
-                
-                for payload in self.nosql_payloads[:2]:
-                    # Try as string (JSON encoded)
-                    query_str = f'query {{ {query_name}({arg_name}: "{payload}") {{ __typename }} }}'
-                    result = self.client.query(query_str)
-                    
-                    if result.get('errors'):
-                        error_text = str(result['errors'])
-                        
-                        if detect_nosql_error(error_text):
-                            findings.append(create_finding(
-                                title="Possible NoSQL Injection Vulnerability",
-                                severity="HIGH",
-                                description=f"NoSQL error messages detected when testing {query_name}.{arg_name}, suggesting potential NoSQL injection vulnerability.",
-                                impact="NoSQL injection can allow attackers to bypass authentication, access unauthorized data, or perform unauthorized operations on the database.",
-                                remediation="Sanitize and validate all user input. Use the database driver's built-in methods for constructing queries. Avoid using eval() or similar functions with user input.",
-                                cwe="CWE-943: Improper Neutralization of Special Elements in Data Query Logic",
-                                evidence={
-                                    'query': query_name,
-                                    'argument': arg_name,
-                                    'payload': payload,
-                                    'error': error_text[:500]
-                                },
-                url=self.client.url
-            ))
+
+                for payload in payloads:
+                    probe = parser.build_operation(field, operation_kind=operation_kind, overrides={arg_name: payload})
+                    if not probe.get('testable'):
+                        continue
+
+                    result = self.client.query(
+                        probe['query'],
+                        variables=probe.get('variables'),
+                        operation_name=probe.get('operation_name'),
+                    )
+
+                    error_text = " | ".join(extract_error_messages(result))
+                    if error_text and detector(error_text) and not detector(baseline_errors):
+                        finding_title = title
+                        if operation_kind == 'mutation' and 'Mutation' not in title:
+                            finding_title = f"{title} in Mutation"
+
+                        findings.append(create_finding(
+                            title=finding_title,
+                            severity="HIGH",
+                            description=f"Backend error patterns consistent with injection were observed while testing {field.get('name')}.{arg_name} with a crafted payload.",
+                            impact="Injection flaws can allow attackers to manipulate backend queries or command execution paths, leading to unauthorized access, data tampering, or system compromise.",
+                            remediation="Use parameterized queries or driver-native safe APIs, validate all inputs rigorously, and avoid directly concatenating user-controlled values into queries or shell commands.",
+                            cwe=cwe,
+                            scanner="injection",
+                            classification={'kind': 'vulnerability', 'family': 'injection'},
+                            confidence={'level': 'medium', 'reasons': ['Schema-valid baseline probe did not show the backend-specific error signature, while the injection payload did']},
+                            evidence={
+                                'operation_kind': operation_kind,
+                                'field': field.get('name'),
+                                'argument': arg_name,
+                                'payload': payload,
+                                'baseline_errors': baseline_errors[:500],
+                                'payload_errors': error_text[:500]
+                            },
+                            request={
+                                'query': probe['query'],
+                                'variables': probe.get('variables'),
+                                'operation_name': probe.get('operation_name')
+                            },
+                            poc=probe['query'],
+                            url=self.client.url
+                        ))
+                        if len(findings) >= 3:
                             return findings
-                
-                tested_count += 1
-        
         return findings
-    
+
     def _test_command_injection(self) -> List[Dict]:
-        """Test command injection on fields with arguments"""
         findings = []
-        
-        queries = self.client.get_queries()
-        
-        tested_count = 0
-        max_tests = 3
-        
-        for query_def in queries:
-            if tested_count >= max_tests:
-                break
-            
-            query_name = query_def.get('name')
+        parser = SchemaParser(self.client.schema)
+        cmd_indicators = [
+            'sh:', 'bash:', 'command not found',
+            'permission denied', '/bin/',
+            'cannot execute', 'processexception'
+        ]
+
+        for query_def in self.client.get_queries()[:5]:
             args = query_def.get('args', [])
-            
             if not args:
                 continue
-            
-            for arg in args[:1]:
-                arg_name = arg.get('name')
-                arg_type = arg.get('type', {})
-                
-                type_name = self._extract_type_name(arg_type)
-                if type_name != 'String':
+
+            baseline = parser.build_operation(query_def, operation_kind='query')
+            if not baseline.get('testable'):
+                continue
+
+            baseline_result = self.client.query(
+                baseline['query'],
+                variables=baseline.get('variables'),
+                operation_name=baseline.get('operation_name'),
+            )
+            baseline_errors = " | ".join(extract_error_messages(baseline_result)).lower()
+            if is_validation_error(baseline_result):
+                continue
+
+            for arg in args[:2]:
+                if extract_type_name(arg.get('type', {})) != 'String':
                     continue
-                
-                for payload in self.command_payloads[:2]:
-                    query_str = f'query {{ {query_name}({arg_name}: "{payload}") {{ __typename }} }}'
-                    result = self.client.query(query_str)
-                    
-                    # Look for command execution indicators in errors
-                    if result.get('errors'):
-                        error_text = str(result['errors'])
-                        
-                        # Check for shell-related errors
-                        cmd_indicators = [
-                            'sh:', 'bash:', 'command not found',
-                            'Permission denied', '/bin/',
-                            'cannot execute', 'ProcessException'
-                        ]
-                        
-                        if any(indicator in error_text for indicator in cmd_indicators):
-                            findings.append(create_finding(
-                                title="Possible Command Injection Vulnerability",
-                                severity="CRITICAL",
-                                description=f"Command execution indicators detected when testing {query_name}.{arg_name}, suggesting potential command injection.",
-                                impact="Command injection allows attackers to execute arbitrary operating system commands, potentially leading to full system compromise.",
-                                remediation="Never pass user input directly to shell commands. Use safe APIs that don't invoke a shell. If shell execution is necessary, use strict allowlists and input validation.",
-                                cwe="CWE-78: OS Command Injection",
-                                evidence={
-                                    'query': query_name,
-                                    'argument': arg_name,
-                                    'payload': payload,
-                                    'error': error_text[:500]
-                                },
-                url=self.client.url
-            ))
+
+                for payload in self.command_payloads[:3]:
+                    probe = parser.build_operation(query_def, operation_kind='query', overrides={arg.get('name'): payload})
+                    if not probe.get('testable'):
+                        continue
+
+                    result = self.client.query(
+                        probe['query'],
+                        variables=probe.get('variables'),
+                        operation_name=probe.get('operation_name'),
+                    )
+                    error_text = " | ".join(extract_error_messages(result)).lower()
+                    if any(indicator in error_text for indicator in cmd_indicators) and not any(indicator in baseline_errors for indicator in cmd_indicators):
+                        findings.append(create_finding(
+                            title="Possible Command Injection Vulnerability",
+                            severity="HIGH",
+                            description=f"Command-execution-like error patterns were observed while testing {query_def.get('name')}.{arg.get('name')} with a crafted payload.",
+                            impact="Command injection can allow arbitrary operating-system command execution and may lead to full host compromise.",
+                            remediation="Never concatenate user input into shell commands. Use safe APIs that avoid invoking a shell, and enforce strict allowlists when command execution is unavoidable.",
+                            cwe="CWE-78: OS Command Injection",
+                            scanner="injection",
+                            classification={'kind': 'vulnerability', 'family': 'injection'},
+                            confidence={'level': 'medium', 'reasons': ['Schema-valid baseline did not show shell-related errors, but the crafted payload did']},
+                            evidence={
+                                'field': query_def.get('name'),
+                                'argument': arg.get('name'),
+                                'payload': payload,
+                                'baseline_errors': baseline_errors[:500],
+                                'payload_errors': error_text[:500]
+                            },
+                            request={
+                                'query': probe['query'],
+                                'variables': probe.get('variables'),
+                                'operation_name': probe.get('operation_name')
+                            },
+                            poc=probe['query'],
+                            url=self.client.url
+                        ))
+                        if len(findings) >= 2:
                             return findings
-                
-                tested_count += 1
-        
         return findings
-    
-    def _test_mutation_injection(self) -> List[Dict]:
-        """Test mutations for injection vulnerabilities"""
-        findings = []
-        
-        mutations = self.client.get_mutations()
-        if not mutations:
-            return findings
-        
-        tested_count = 0
-        max_tests = 5  # Limit testing to avoid overwhelming the API
-        
-        for mutation_def in mutations:
-            if tested_count >= max_tests:
-                break
-            
-            mutation_name = mutation_def.get('name')
-            args = mutation_def.get('args', [])
-            
-            if not args:
-                continue
-            
-            # Test each argument with SQL injection payloads
-            for arg in args[:2]:  # Test first 2 args per mutation
-                arg_name = arg.get('name')
-                arg_type = arg.get('type', {})
-                
-                # Only test String and ID arguments (user input)
-                type_name = self._extract_type_name(arg_type)
-                if type_name != 'String' and type_name != 'ID':
-                    continue
-                
-                for payload in self.sql_payloads[:3]:  # Test first 3 payloads
-                    # Build mutation with injection payload
-                    var_decl = f'${arg_name}: {type_name}!'
-                    mutation_str = f'mutation TestMutation({var_decl}) {{ {mutation_name}({arg_name}: ${arg_name}) {{ __typename }} }}'
-                    variables = {arg_name: payload}
-                    
-                    result = self.client.query(mutation_str, variables=variables)
-                    
-                    if result.get('errors'):
-                        error_text = str(result['errors'])
-                        
-                        if detect_sql_error(error_text):
-                            findings.append(create_finding(
-                                title="SQL Injection Vulnerability in Mutation",
-                                severity="CRITICAL",
-                                description=f"SQL error messages detected when testing mutation {mutation_name}.{arg_name} with injection payload, indicating a SQL injection vulnerability in mutations.",
-                                impact="SQL injection in mutations is particularly dangerous as it can allow attackers to modify or delete data, bypass authentication, or escalate privileges through data manipulation.",
-                                remediation="Use parameterized queries or ORM methods that prevent SQL injection. Never concatenate user input directly into SQL queries. Implement strict input validation for all mutation arguments.",
-                                cwe="CWE-89: SQL Injection",
-                                evidence={
-                                    'mutation': mutation_name,
-                                    'argument': arg_name,
-                                    'payload': payload,
-                                    'error': error_text[:500]
-                                },
-                                poc=mutation_str,
-                                url=self.client.url
-                            ))
-                            tested_count += 1
-                            return findings  # Stop after first finding
-                
-                tested_count += 1
-        
-        return findings
-    
-    def _extract_type_name(self, type_def: Dict) -> str:
-        """Extract type name from type definition"""
-        if not type_def:
-            return "Unknown"
-        
-        if type_def.get('name'):
-            return type_def['name']
-        
-        if type_def.get('ofType'):
-            return self._extract_type_name(type_def['ofType'])
-        
-        return "Unknown"
 

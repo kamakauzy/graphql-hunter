@@ -605,6 +605,7 @@ def main():
     
     # Store all findings
     all_findings = []
+    failed_scanners = []
     scan_metadata = {
         'target': args.url,
         'profile': args.profile,
@@ -679,6 +680,7 @@ def main():
                 reporter.print_success("No issues found")
         except Exception as e:
             reporter.print_error(f"Scanner error: {e}")
+            failed_scanners.append({'scanner': scanner_name, 'error': str(e)})
             if args.verbose:
                 import traceback
                 reporter.print_debug(traceback.format_exc())
@@ -686,6 +688,7 @@ def main():
         reporter.print_separator()
     
     # Print summary
+    summary = reporter.get_summary_stats(all_findings)
     reporter.print_summary(all_findings)
     
     # Save to JSON if requested
@@ -694,7 +697,8 @@ def main():
             output_data = {
                 'metadata': scan_metadata,
                 'findings': all_findings,
-                'summary': reporter.get_summary_stats(all_findings)
+                'summary': summary,
+                'errors': failed_scanners,
             }
             with open(args.output, 'w') as f:
                 json.dump(output_data, f, indent=2)
@@ -708,7 +712,8 @@ def main():
             output_data = {
                 'metadata': scan_metadata,
                 'findings': all_findings,
-                'summary': reporter.get_summary_stats(all_findings)
+                'summary': summary,
+                'errors': failed_scanners,
             }
             HTMLReporter.generate(
                 output_data['metadata'],
@@ -720,9 +725,10 @@ def main():
         except Exception as e:
             reporter.print_error(f"Failed to save HTML: {e}")
     
-    # Return exit code based on findings
-    critical_count = sum(1 for f in all_findings if f.get('severity') == 'CRITICAL')
-    high_count = sum(1 for f in all_findings if f.get('severity') == 'HIGH')
+    # Return exit code based on confirmed findings only
+    confirmed_counts = summary.get('confirmed_by_severity', {})
+    critical_count = confirmed_counts.get('CRITICAL', 0)
+    high_count = confirmed_counts.get('HIGH', 0)
     
     if critical_count > 0:
         return 2

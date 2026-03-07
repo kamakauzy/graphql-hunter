@@ -107,10 +107,22 @@ class Reporter:
         evidence = finding.get('evidence', {})
         poc = finding.get('poc', '')
         cwe = finding.get('cwe', '')
+        scanner = finding.get('scanner')
+        status = finding.get('status')
+        confidence = (finding.get('confidence') or {}).get('level')
         
         # Print title with severity
         severity_label = f"[{severity}]"
         print(f"\n{self._colorize(severity_label, severity)} {self._colorize(title, severity)}")
+        details = []
+        if scanner:
+            details.append(f"scanner={scanner}")
+        if status:
+            details.append(f"status={status}")
+        if confidence:
+            details.append(f"confidence={confidence}")
+        if details:
+            print(f"  Metadata: {', '.join(details)}")
         
         # Print description
         if description:
@@ -163,11 +175,28 @@ class Reporter:
             'LOW': 0,
             'INFO': 0
         }
+        status_counts = {
+            'confirmed': 0,
+            'potential': 0,
+            'manual_review': 0,
+        }
+        confirmed_counts = {
+            'CRITICAL': 0,
+            'HIGH': 0,
+            'MEDIUM': 0,
+            'LOW': 0,
+            'INFO': 0
+        }
         
         for finding in findings:
             severity = finding.get('severity', 'INFO')
             if severity in counts:
                 counts[severity] += 1
+            status = finding.get('status')
+            if status in status_counts:
+                status_counts[status] += 1
+            if status == 'confirmed' and severity in confirmed_counts:
+                confirmed_counts[severity] += 1
         
         total = sum(counts.values())
         
@@ -182,17 +211,22 @@ class Reporter:
             print(self._colorize(f"  Low: {counts['LOW']}", 'LOW'))
         if counts['INFO'] > 0:
             print(self._colorize(f"  Info: {counts['INFO']}", 'INFO'))
+        print(f"  Confirmed: {status_counts['confirmed']}")
+        print(f"  Potential: {status_counts['potential']}")
+        print(f"  Manual review: {status_counts['manual_review']}")
         
         # Risk assessment
         print()
-        if counts['CRITICAL'] > 0:
+        if confirmed_counts['CRITICAL'] > 0:
             print(self._colorize("Overall Risk: CRITICAL - Immediate action required!", 'CRITICAL'))
-        elif counts['HIGH'] > 0:
+        elif confirmed_counts['HIGH'] > 0:
             print(self._colorize("Overall Risk: HIGH - Action required soon", 'HIGH'))
-        elif counts['MEDIUM'] > 0:
+        elif confirmed_counts['MEDIUM'] > 0:
             print(self._colorize("Overall Risk: MEDIUM - Should be addressed", 'MEDIUM'))
-        elif counts['LOW'] > 0:
+        elif confirmed_counts['LOW'] > 0:
             print(self._colorize("Overall Risk: LOW - Minor issues found", 'LOW'))
+        elif status_counts['manual_review'] > 0 or status_counts['potential'] > 0:
+            print(self._colorize("Overall Risk: REVIEW REQUIRED - Potential or manual-review items were identified", 'WARNING'))
         else:
             print(self._colorize("Overall Risk: MINIMAL - No significant issues", 'SUCCESS'))
         
@@ -215,14 +249,47 @@ class Reporter:
             'LOW': 0,
             'INFO': 0
         }
+        status_counts = {
+            'confirmed': 0,
+            'potential': 0,
+            'manual_review': 0
+        }
+        confirmed_counts = {
+            'CRITICAL': 0,
+            'HIGH': 0,
+            'MEDIUM': 0,
+            'LOW': 0,
+            'INFO': 0
+        }
         
         for finding in findings:
             severity = finding.get('severity', 'INFO')
             if severity in counts:
                 counts[severity] += 1
+            status = finding.get('status')
+            if status in status_counts:
+                status_counts[status] += 1
+            if status == 'confirmed' and severity in confirmed_counts:
+                confirmed_counts[severity] += 1
+
+        risk_level = "MINIMAL"
+        if confirmed_counts['CRITICAL'] > 0:
+            risk_level = "CRITICAL"
+        elif confirmed_counts['HIGH'] > 0:
+            risk_level = "HIGH"
+        elif confirmed_counts['MEDIUM'] > 0:
+            risk_level = "MEDIUM"
+        elif confirmed_counts['LOW'] > 0:
+            risk_level = "LOW"
+        elif status_counts['manual_review'] > 0 or status_counts['potential'] > 0:
+            risk_level = "REVIEW_REQUIRED"
         
         return {
             'total': sum(counts.values()),
-            'by_severity': counts
+            'by_severity': counts,
+            'by_status': status_counts,
+            'confirmed_by_severity': confirmed_counts,
+            'risk_level': risk_level,
+            'manual_verification_required': sum(1 for f in findings if f.get('manual_verification_required'))
         }
 

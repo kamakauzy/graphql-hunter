@@ -107,6 +107,10 @@ class CircularQueryScanner:
             description=f"The type '{type_name}' has a field '{field_name}' that returns the same type, creating a circular reference.",
             impact="Circular references can be exploited to create deeply nested queries if depth limiting is not properly implemented. This could lead to resource exhaustion.",
             remediation="Ensure query depth limiting is enforced. The limit should prevent exploitation of circular references regardless of the schema design.",
+            scanner="circular_query",
+            classification={'kind': 'manual_review', 'family': 'dos'},
+            confidence={'level': 'low', 'reasons': ['Schema contains circular object references, but exploitability depends on depth/complexity controls']},
+            manual_verification_required=True,
             evidence={
                 'type': type_name,
                 'field': field_name,

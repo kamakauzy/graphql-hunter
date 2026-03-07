@@ -104,11 +104,15 @@ class MutationFuzzer:
             
             findings.append(create_finding(
                 title="Potentially Dangerous Mutations Found",
-                severity="MEDIUM",
+                severity="INFO",
                 description=f"Found {len(dangerous_mutations)} mutations with names suggesting destructive or privileged operations: {mutation_names}",
                 impact="Mutations that modify critical data or permissions must have robust authorization checks. If these checks are missing or flawed, attackers could perform unauthorized privileged operations.",
                 remediation="Ensure all dangerous mutations require strong authentication and authorization. Implement role-based access control (RBAC). Add audit logging for all sensitive mutations. Consider implementing mutation rate limiting.",
                 cwe="CWE-862: Missing Authorization",
+                scanner="mutation_fuzzer",
+                classification={'kind': 'manual_review', 'family': 'authz'},
+                confidence={'level': 'low', 'reasons': ['Mutation names matched destructive or privileged-operation heuristics']},
+                manual_verification_required=True,
                 evidence={
                     'dangerous_mutations': dangerous_mutations[:10]
                 },
@@ -141,11 +145,14 @@ class MutationFuzzer:
                 if unauth_mutations and len(unauth_mutations) > 0:
                     findings.append(create_finding(
                         title="Mutations Discoverable Without Authentication",
-                        severity="MEDIUM",
+                        severity="INFO",
                         description=f"Discovered {len(unauth_mutations)} mutations without authentication. While discovery doesn't mean they're exploitable, it aids in reconnaissance.",
                         impact="Attackers can discover all available mutations without authentication, allowing them to map the attack surface and identify potential targets.",
                         remediation="Consider requiring authentication even for introspection. This reduces information disclosure to unauthenticated users.",
                         cwe="CWE-200: Exposure of Sensitive Information to an Unauthorized Actor",
+                        scanner="mutation_fuzzer",
+                        classification={'kind': 'exposure', 'family': 'graphql_surface'},
+                        confidence={'level': 'confirmed', 'reasons': ['Unauthenticated introspection revealed mutation names']},
                         evidence={
                             'mutation_count': len(unauth_mutations)
                         },
@@ -213,11 +220,15 @@ class MutationFuzzer:
             
             findings.append(create_finding(
                 title="Potential IDOR/BOLA Vulnerabilities in Mutations",
-                severity="HIGH",
+                severity="INFO",
                 description=f"Found {len(idor_candidates)} mutations that accept ID arguments: {sample_mutations}. These are potential IDOR (Insecure Direct Object Reference) or BOLA (Broken Object Level Authorization) targets.",
                 impact="If these mutations don't properly validate that the user is authorized to modify the object identified by the ID, attackers could manipulate other users' data by simply changing the ID parameter. This is a common vulnerability in GraphQL APIs.",
                 remediation="Implement object-level authorization checks in all mutations. Verify that the authenticated user has permission to modify the specific object before executing the mutation. Never rely solely on possessing the ID as proof of authorization. Test manually with multiple user accounts.",
                 cwe="CWE-639: Authorization Bypass Through User-Controlled Key",
+                scanner="mutation_fuzzer",
+                classification={'kind': 'manual_review', 'family': 'authz'},
+                confidence={'level': 'low', 'reasons': ['Mutation arguments include object identifiers, but no cross-user access differential was demonstrated']},
+                manual_verification_required=True,
                 evidence={
                     'idor_candidates': idor_candidates[:10],
                     'manual_testing_recommended': True,
@@ -294,11 +305,15 @@ class MutationFuzzer:
             
             findings.append(create_finding(
                 title="Potential Mass Assignment Vulnerability",
-                severity="HIGH",
+                severity="INFO",
                 description=f"Found {len(mass_assignment_candidates)} mutations with input types containing sensitive fields: {sample_mutations}. These may be vulnerable to mass assignment if the server accepts unexpected fields.",
                 impact="Mass assignment allows attackers to set fields they shouldn't have access to by including them in mutation variables. For example, setting 'role: admin' in a user creation mutation could escalate privileges.",
                 remediation="Implement strict input validation: 1) Use allowlists of fields that can be set, 2) Explicitly exclude sensitive fields from input types, 3) Use separate input types for different operations (create vs update), 4) Validate and sanitize all input fields server-side, 5) Never bind input directly to model objects without filtering.",
                 cwe="CWE-915: Improperly Controlled Modification of Dynamically-Determined Object Attributes",
+                scanner="mutation_fuzzer",
+                classification={'kind': 'manual_review', 'family': 'authz'},
+                confidence={'level': 'low', 'reasons': ['Sensitive-looking fields were present in input object definitions, but server-side binding behavior was not exercised']},
+                manual_verification_required=True,
                 evidence={
                     'mass_assignment_candidates': mass_assignment_candidates[:10],
                     'test_recommendation': 'Try adding unexpected sensitive fields to mutation variables and verify they are rejected'
@@ -350,11 +365,15 @@ class MutationFuzzer:
                 
                 findings.append(create_finding(
                     title="Privilege Escalation Testing Recommended",
-                    severity="MEDIUM",
+                    severity="INFO",
                     description=f"Mutation {mutation_name} may be vulnerable to privilege escalation via mass assignment. Test by adding sensitive fields to input variables.",
                     impact="If mutations accept unexpected fields like 'role' or 'isAdmin', attackers could escalate privileges during user creation or profile updates.",
                     remediation="Explicitly validate and filter all input fields. Use separate input types for different privilege levels. Never allow clients to set sensitive fields directly.",
                     cwe="CWE-269: Improper Privilege Management",
+                    scanner="mutation_fuzzer",
+                    classification={'kind': 'manual_review', 'family': 'authz'},
+                    confidence={'level': 'low', 'reasons': ['User-related mutation shape suggests manual privilege-escalation testing is warranted']},
+                    manual_verification_required=True,
                     evidence={
                         'mutation': mutation_name,
                         'test_fields': sensitive_test_fields,

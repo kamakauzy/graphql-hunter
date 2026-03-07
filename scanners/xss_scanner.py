@@ -9,231 +9,117 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
 from graphql_client import GraphQLClient
 from reporter import Reporter
-from utils import create_finding
+from utils import create_finding, extract_type_name, is_validation_error, payload_reflected_in_data
+from introspection import SchemaParser
 from typing import List, Dict
+import yaml
 
 
 class XSSScanner:
     """Scanner for XSS vulnerabilities"""
-    
+
     def __init__(self, client: GraphQLClient, reporter: Reporter, config: Dict):
-        """
-        Initialize XSS scanner
-        
-        Args:
-            client: GraphQL client instance
-            reporter: Reporter instance
-            config: Scanner configuration
-        """
         self.client = client
         self.reporter = reporter
         self.config = config
-        
-        # XSS payloads
-        self.xss_payloads = [
-            "<script>alert('XSS')</script>",
-            "<img src=x onerror=alert('XSS')>",
-            "javascript:alert('XSS')",
-            "<svg onload=alert('XSS')>",
-            "'\"><script>alert(String.fromCharCode(88,83,83))</script>",
-        ]
-        
-        # Mutation-specific XSS payloads for user creation/update mutations
-        self.mutation_xss_payloads = [
-            "<script>alert('XSS')</script>",
-            "<img src=x onerror=alert('XSS')>",
-            "javascript:alert('XSS')",
-            "<svg onload=alert('XSS')>",
-            "'\"><script>alert(String.fromCharCode(88,83,83))</script>",
-            "<iframe src=javascript:alert('XSS')>",
-            "<body onload=alert('XSS')>",
-        ]
-    
+        self.xss_payloads = self._load_payloads()
+
+    def _load_payloads(self):
+        payload_file = Path(__file__).parent.parent / "config" / "payloads.yaml"
+        try:
+            with open(payload_file, 'r', encoding='utf-8') as handle:
+                payloads = yaml.safe_load(handle) or {}
+            return payloads.get('xss_payloads', [])
+        except Exception:
+            return ["<script>alert('XSS')</script>", "<img src=x onerror=alert('XSS')>"]
+
     def scan(self) -> List[Dict]:
-        """
-        Run XSS scan
-        
-        Returns:
-            List of findings
-        """
         findings = []
-        
+
         if not self.client.schema:
             self.reporter.print_warning("Schema not available, skipping XSS tests")
             return findings
-        
-        # Test mutations for XSS
+
         self.reporter.print_info("Testing mutations for XSS vulnerabilities...")
-        findings.extend(self._test_mutation_xss())
-        
-        # Test queries for XSS (if any)
+        findings.extend(self._test_field_family('mutation', self.client.get_mutations()))
+
         self.reporter.print_info("Testing queries for XSS vulnerabilities...")
-        findings.extend(self._test_query_xss())
-        
+        findings.extend(self._test_field_family('query', self.client.get_queries()))
+
         return findings
-    
-    def _test_mutation_xss(self) -> List[Dict]:
-        """Test mutations for XSS vulnerabilities"""
+
+    def _test_field_family(self, operation_kind: str, fields: List[Dict]) -> List[Dict]:
         findings = []
-        
-        mutations = self.client.get_mutations()
-        
-        if not mutations or len(mutations) == 0:
-            return findings
-        
-        # Prioritize mutations that likely handle user input
-        priority_keywords = ['create', 'update', 'edit', 'post', 'comment', 'message', 'user', 'profile']
-        
-        # Sort mutations: priority first, then others
-        prioritized_mutations = []
-        other_mutations = []
-        
-        for mutation_def in mutations:
-            if not mutation_def or not isinstance(mutation_def, dict):
-                continue
-            mutation_name = mutation_def.get('name', '').lower()
-            if any(keyword in mutation_name for keyword in priority_keywords):
-                prioritized_mutations.append(mutation_def)
-            else:
-                other_mutations.append(mutation_def)
-        
-        # Test prioritized mutations first, then others
-        mutations_to_test = prioritized_mutations + other_mutations
-        
-        # Limit total tests to avoid overwhelming, but test more than before
+        parser = SchemaParser(self.client.schema)
         max_total_tests = self.config.get('max_xss_tests', 20)
-        tested_count = 0
-        
-        for mutation_def in mutations_to_test:
-            if tested_count >= max_total_tests:
+        tests_run = 0
+
+        for field in fields:
+            if tests_run >= max_total_tests:
                 break
-            
-            mutation_name = mutation_def.get('name')
-            args = mutation_def.get('args', [])
-            
+
+            args = field.get('args', [])
             if not args:
                 continue
-            
-            # Test string arguments with XSS payloads
-            for arg in args[:3]:  # Test first 3 args per mutation
-                if tested_count >= max_total_tests:
+
+            baseline = parser.build_operation(field, operation_kind=operation_kind)
+            if not baseline.get('testable'):
+                continue
+
+            baseline_result = self.client.query(
+                baseline['query'],
+                variables=baseline.get('variables'),
+                operation_name=baseline.get('operation_name'),
+            )
+            if is_validation_error(baseline_result):
+                continue
+
+            for arg in args[:3]:
+                if tests_run >= max_total_tests:
                     break
-                
-                arg_name = arg.get('name')
-                arg_type = self._extract_type_name(arg.get('type', {}))
-                
-                if arg_type != 'String':
+                if extract_type_name(arg.get('type', {})) != 'String':
                     continue
-                
-                # Use mutation-specific payloads for user-related mutations
-                payloads = self.mutation_xss_payloads if any(kw in mutation_name.lower() for kw in ['user', 'create', 'update', 'post']) else self.xss_payloads
-                
-                for payload in payloads[:3]:  # Test first 3 payloads per arg
-                    if tested_count >= max_total_tests:
-                        break
-                    
-                    # Build mutation with variables
-                    var_decl = f'${arg_name}: String!'
-                    mutation_str = f'mutation TestXSS({var_decl}) {{ {mutation_name}({arg_name}: ${arg_name}) {{ __typename }} }}'
-                    variables = {arg_name: payload}
-                    
-                    result = self.client.query(mutation_str, variables=variables)
-                    
-                    # Check if payload is reflected in response
-                    response_text = str(result)
-                    
-                    # Check for payload reflection (even if encoded)
-                    if payload in response_text or payload.replace('<', '&lt;') in response_text:
+
+                for payload in self.xss_payloads[:3]:
+                    probe = parser.build_operation(field, operation_kind=operation_kind, overrides={arg.get('name'): payload})
+                    if not probe.get('testable'):
+                        continue
+
+                    result = self.client.query(
+                        probe['query'],
+                        variables=probe.get('variables'),
+                        operation_name=probe.get('operation_name'),
+                    )
+                    tests_run += 1
+
+                    if payload_reflected_in_data(result, payload):
                         findings.append(create_finding(
-                            title="Potential XSS Vulnerability in Mutation",
-                            severity="HIGH",
-                            description=f"XSS payload was reflected in response when testing {mutation_name}.{arg_name}. The application may not be properly sanitizing user input in mutations.",
-                            impact="Cross-Site Scripting in mutations is particularly dangerous as it can affect data stored in the system. Attackers can inject malicious scripts that execute when data is retrieved and displayed, potentially stealing credentials, session tokens, or performing actions on behalf of users.",
-                            remediation="Sanitize and encode all user input before storing in the database. Use context-aware output encoding when rendering stored data. Implement Content Security Policy (CSP) headers. Validate mutation inputs strictly.",
+                            title=f"Potential XSS Review Required in {operation_kind.title()}",
+                            severity="MEDIUM",
+                            description=f"An XSS payload was reflected in successful {operation_kind} response data while testing {field.get('name')}.{arg.get('name')}. Reflection alone does not prove browser execution, but it indicates that output encoding and sink handling should be reviewed carefully.",
+                            impact="Unsafely rendered reflected or stored content can become a browser-exploitable XSS issue in downstream clients, dashboards, or admin consoles that display GraphQL responses.",
+                            remediation="Ensure user-controlled content is contextually encoded at every browser/UI sink, sanitize rich-text inputs where appropriate, and validate that stored values cannot execute script in consuming applications.",
                             cwe="CWE-79: Cross-site Scripting (XSS)",
+                            scanner="xss",
+                            classification={'kind': 'manual_review', 'family': 'xss'},
+                            confidence={'level': 'low', 'reasons': ['Payload reflection was observed in response data, but no browser sink or script execution was demonstrated']},
+                            manual_verification_required=True,
                             evidence={
-                                'mutation': mutation_name,
-                                'argument': arg_name,
+                                'operation_kind': operation_kind,
+                                'field': field.get('name'),
+                                'argument': arg.get('name'),
                                 'payload': payload,
-                                'reflected': True
+                                'reflected_in_data': True
                             },
-                            poc=mutation_str,
+                            request={
+                                'query': probe['query'],
+                                'variables': probe.get('variables'),
+                                'operation_name': probe.get('operation_name')
+                            },
+                            poc=probe['query'],
                             url=self.client.url
                         ))
-                        tested_count += 1
-                        # Continue testing other mutations but note this finding
-                        break  # Move to next argument
-                
-                tested_count += 1
-        
+                        break
+
         return findings
-    
-    def _test_query_xss(self) -> List[Dict]:
-        """Test queries for XSS vulnerabilities"""
-        findings = []
-        
-        queries = self.client.get_queries()
-        if not queries:
-            return findings
-        
-        # Test a few queries with String arguments
-        tested_count = 0
-        max_tests = 5
-        
-        for query_def in queries[:max_tests]:
-            if tested_count >= max_tests:
-                break
-            
-            query_name = query_def.get('name')
-            args = query_def.get('args', [])
-            
-            if not args:
-                continue
-            
-            for arg in args[:1]:  # Test first arg
-                arg_name = arg.get('name')
-                arg_type = self._extract_type_name(arg.get('type', {}))
-                
-                if arg_type != 'String':
-                    continue
-                
-                for payload in self.xss_payloads[:2]:  # Test first 2 payloads
-                    query_str = f'query {{ {query_name}({arg_name}: "{payload.replace(chr(34), chr(92)+chr(34))}") {{ __typename }} }}'
-                    result = self.client.query(query_str)
-                    
-                    response_text = str(result)
-                    if payload in response_text:
-                        findings.append(create_finding(
-                            title="Potential XSS Vulnerability in Query",
-                            severity="HIGH",
-                            description=f"XSS payload was reflected in response when testing {query_name}.{arg_name}.",
-                            impact="XSS in queries can allow attackers to inject scripts that execute when query results are displayed.",
-                            remediation="Sanitize and encode all query input and output.",
-                            cwe="CWE-79: Cross-site Scripting (XSS)",
-                            evidence={
-                                'query': query_name,
-                                'argument': arg_name,
-                                'payload': payload
-                            },
-                            poc=query_str,
-                            url=self.client.url
-                        ))
-                        return findings  # Stop after first finding
-                
-                tested_count += 1
-        
-        return findings
-    
-    def _extract_type_name(self, type_def: Dict) -> str:
-        """Extract type name from type definition"""
-        if not type_def:
-            return "Unknown"
-        
-        if type_def.get('name'):
-            return type_def['name']
-        
-        if type_def.get('ofType'):
-            return self._extract_type_name(type_def['ofType'])
-        
-        return "Unknown"
 
