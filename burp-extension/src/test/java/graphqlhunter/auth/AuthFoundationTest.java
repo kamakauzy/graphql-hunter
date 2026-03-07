@@ -93,6 +93,54 @@ class AuthFoundationTest
         assertEquals("csrf123", manager.requestHeaders().get("x-csrf-token"));
     }
 
+    @Test
+    void oauthClientCredentialsProfileAcquiresBearerToken()
+    {
+        GraphQLHunterModels.AuthSettings settings = new GraphQLHunterModels.AuthSettings();
+        settings.mode = "profile";
+        settings.profileName = "oauth2_client_credentials";
+        settings.authVars.put("client_id", "cid");
+        settings.authVars.put("client_secret", "sec");
+        settings.authVars.put("scope", "read");
+
+        AuthManager manager = AuthManager.fromState(settings, null);
+        GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+            "https://api.example.com/graphql",
+            Map.of(),
+            new FakeSessionTransport(),
+            null,
+            manager
+        );
+
+        manager.ensurePrepared(client);
+
+        assertEquals("Bearer oauth-token", manager.requestHeaders().get("Authorization"));
+    }
+
+    @Test
+    void oauthRefreshTokenProfileAcquiresBearerToken()
+    {
+        GraphQLHunterModels.AuthSettings settings = new GraphQLHunterModels.AuthSettings();
+        settings.mode = "profile";
+        settings.profileName = "oauth2_refresh_token";
+        settings.authVars.put("client_id", "cid");
+        settings.authVars.put("client_secret", "sec");
+        settings.authVars.put("refresh_token", "refresh123");
+
+        AuthManager manager = AuthManager.fromState(settings, null);
+        GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+            "https://api.example.com/graphql",
+            Map.of(),
+            new FakeSessionTransport(),
+            null,
+            manager
+        );
+
+        manager.ensurePrepared(client);
+
+        assertEquals("Bearer oauth-token", manager.requestHeaders().get("Authorization"));
+    }
+
     private static final class FakeSessionTransport implements GraphQLHunterCore.SessionAwareTransport
     {
         private final Map<String, String> cookies = new LinkedHashMap<>();
@@ -111,6 +159,23 @@ class AuthFoundationTest
         @Override
         public GraphQLHunterCore.GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
         {
+            if (url.contains("/oauth/token"))
+            {
+                return response(Map.of(
+                    "access_token", "oauth-token",
+                    "token_type", "Bearer",
+                    "expires_in", 3600,
+                    "refresh_token", "refresh456"
+                ), new LinkedHashMap<>());
+            }
+            if (url.contains("/oauth/device/code"))
+            {
+                return response(Map.of(
+                    "device_code", "device123",
+                    "user_code", "user123",
+                    "verification_uri", "https://issuer.example.com/verify"
+                ), new LinkedHashMap<>());
+            }
             cookies.put("sessionid", "tok123");
             return response(Map.of("ok", true), Map.of("x-csrf-token", java.util.List.of("csrf123")));
         }
