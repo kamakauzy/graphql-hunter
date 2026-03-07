@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "scanners"))
 from xss_scanner import XSSScanner
 from injection_scanner import InjectionScanner
 from file_upload_scanner import FileUploadScanner
+from utils import detect_sql_error
 
 
 SCHEMA = {
@@ -28,6 +29,11 @@ SCHEMA = {
                     "name": "lookup",
                     "args": [{"name": "term", "type": {"kind": "NON_NULL", "ofType": {"kind": "SCALAR", "name": "String"}}}],
                     "type": {"kind": "OBJECT", "name": "LookupResponse"},
+                },
+                {
+                    "name": "filterPastes",
+                    "args": [{"name": "filter", "type": {"kind": "NON_NULL", "ofType": {"kind": "SCALAR", "name": "String"}}}],
+                    "type": {"kind": "LIST", "ofType": {"kind": "OBJECT", "name": "PasteObject"}},
                 },
             ],
         },
@@ -64,6 +70,13 @@ SCHEMA = {
             "name": "UploadPasteResponse",
             "fields": [
                 {"name": "result", "args": [], "type": {"kind": "SCALAR", "name": "String"}},
+            ],
+        },
+        {
+            "kind": "OBJECT",
+            "name": "PasteObject",
+            "fields": [
+                {"name": "title", "args": [], "type": {"kind": "SCALAR", "name": "String"}},
             ],
         },
         {"kind": "SCALAR", "name": "String"},
@@ -111,6 +124,11 @@ class _FakeClient:
                     return {"data": {"lookup": {"message": "ok"}}, "_status_code": 200, "_elapsed_seconds": 5.2}
                 return {"errors": [{"message": "SQLSTATE syntax error near SELECT"}], "_status_code": 200, "_elapsed_seconds": 0.11}
             return {"data": {"lookup": {"message": "ok"}}, "_status_code": 200, "_elapsed_seconds": 0.1}
+        if operation_name and operation_name.startswith("AutoQueryFilterPastes"):
+            filter_value = variables.get("filter", "")
+            if "1=1" in filter_value:
+                return {"data": {"filterPastes": [{"title": "A"}, {"title": "B"}, {"title": "C"}]}, "_status_code": 200, "_elapsed_seconds": 0.1}
+            return {"data": {"filterPastes": []}, "_status_code": 200, "_elapsed_seconds": 0.1}
         if operation_name and operation_name.startswith("AutoMutationUploadPaste"):
             return {"data": {"uploadPaste": {"result": variables.get("content", "")}}, "_status_code": 200}
         return {"errors": [{"message": "Unexpected operation"}], "_status_code": 400}
@@ -140,6 +158,7 @@ class TestScanners(unittest.TestCase):
         self.assertEqual(finding["status"], "potential")
         self.assertEqual(finding["severity"], "HIGH")
         self.assertEqual(finding["classification"]["family"], "injection")
+        self.assertEqual(finding["status"], "potential")
 
     def test_injection_scanner_detects_time_based_sqli(self):
         scanner = InjectionScanner(_FakeClient(), _DummyReporter(), {"enable_deep_injection": False})
@@ -147,6 +166,20 @@ class TestScanners(unittest.TestCase):
         findings = scanner.scan()
 
         self.assertTrue(any("Time-Based" in finding["title"] for finding in findings))
+
+    def test_injection_scanner_detects_boolean_based_sqli_diff(self):
+        scanner = InjectionScanner(_FakeClient(), _DummyReporter(), {"enable_deep_injection": False})
+        filter_field = next(field for field in scanner.client.get_queries() if field["name"] == "filterPastes")
+        findings = scanner._test_query_family(
+            'query',
+            [filter_field],
+            scanner.sql_payloads.get('basic', []),
+            detect_sql_error,
+            "Possible SQL Injection Vulnerability",
+            "CWE-89: SQL Injection",
+        )
+
+        self.assertTrue(any(finding["evidence"].get("field") == "filterPastes" for finding in findings))
 
     def test_file_upload_scanner_detects_string_based_upload_surface(self):
         scanner = FileUploadScanner(_FakeClient(), _DummyReporter(), {"safe_mode": True})

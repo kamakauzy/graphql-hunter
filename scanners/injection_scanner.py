@@ -73,10 +73,10 @@ class InjectionScanner:
 
         self.reporter.print_info("Testing SQL injection on queries with arguments...")
         sql_error_payloads = self.sql_payloads.get('basic', []) + self.sql_payloads.get('union_based', [])
-        findings.extend(self._test_query_family('query', self.client.get_queries(), sql_error_payloads[:4], detect_sql_error, "Possible SQL Injection Vulnerability", "CWE-89: SQL Injection"))
+        findings.extend(self._test_query_family('query', self.client.get_queries(), sql_error_payloads[:6], detect_sql_error, "Possible SQL Injection Vulnerability", "CWE-89: SQL Injection"))
 
         self.reporter.print_info("Testing SQL injection on mutations...")
-        findings.extend(self._test_query_family('mutation', self.client.get_mutations(), sql_error_payloads[:4], detect_sql_error, "Possible SQL Injection Vulnerability in Mutation", "CWE-89: SQL Injection"))
+        findings.extend(self._test_query_family('mutation', self.client.get_mutations(), sql_error_payloads[:6], detect_sql_error, "Possible SQL Injection Vulnerability in Mutation", "CWE-89: SQL Injection"))
 
         self.reporter.print_info("Testing time-based SQL injection...")
         findings.extend(self._test_time_based_query_family('query', self.client.get_queries(), self.sql_payloads.get('time_based', []), "Potential Time-Based SQL Injection Vulnerability", "CWE-89: SQL Injection"))
@@ -99,6 +99,26 @@ class InjectionScanner:
             elapsed = time.perf_counter() - started
         return result, float(elapsed)
 
+    def _extract_root_value(self, result: Dict, field_name: str):
+        """Extract the root field value from GraphQL data."""
+        data = result.get('data') or {}
+        if not isinstance(data, dict):
+            return None
+        return data.get(field_name)
+
+    def _is_boolean_probe_payload(self, payload: str) -> bool:
+        """Identify boolean/tautology-oriented injection payloads."""
+        lowered = (payload or "").lower()
+        return any(token in lowered for token in ["1=1", "'a'='a", '"a"="a', "$gt", "$ne", "$regex"])
+
+    def _looks_like_boolean_injection_diff(self, baseline_value, payload_value) -> bool:
+        """Best-effort detection of suspicious data-shape expansion."""
+        if isinstance(baseline_value, list) and isinstance(payload_value, list):
+            return len(payload_value) > max(len(baseline_value) + 1, 1)
+        if baseline_value in (None, [], {}) and payload_value not in (None, [], {}):
+            return True
+        return False
+
     def _test_query_family(self, operation_kind: str, fields: List[Dict], payloads: List[str], detector, title: str, cwe: str) -> List[Dict]:
         findings = []
         parser = SchemaParser(self.client.schema)
@@ -109,70 +129,129 @@ class InjectionScanner:
             if not args:
                 continue
 
-            baseline = parser.build_operation(field, operation_kind=operation_kind)
-            if not baseline.get('testable'):
-                continue
+            common_overrides = {}
+            if operation_kind == 'query':
+                for extra_arg in args:
+                    if extra_arg.get('name') == 'limit' and extract_type_name(extra_arg.get('type', {})) == 'Int':
+                        common_overrides['limit'] = 5
 
-            baseline_result = self.client.query(
-                baseline['query'],
-                variables=baseline.get('variables'),
-                operation_name=baseline.get('operation_name'),
-            )
-            baseline_errors = " | ".join(extract_error_messages(baseline_result))
-            if is_validation_error(baseline_result):
-                continue
-
-            for arg in args[:2]:
+            candidate_args = [arg for arg in args if extract_type_name(arg.get('type', {})) in {'String', 'ID'}]
+            for arg in candidate_args[:3]:
                 arg_name = arg.get('name')
                 arg_type_name = extract_type_name(arg.get('type', {}))
-                if arg_type_name not in {'String', 'ID'}:
+                finding_emitted_for_arg = False
+
+                arg_baseline_overrides = dict(common_overrides)
+                if arg_type_name == 'String':
+                    arg_baseline_overrides[arg_name] = "__gqlh_baseline__"
+                elif arg_type_name == 'ID':
+                    arg_baseline_overrides[arg_name] = "999999999"
+
+                baseline = parser.build_operation(field, operation_kind=operation_kind, overrides=arg_baseline_overrides)
+                if not baseline.get('testable'):
+                    continue
+
+                baseline_result = self.client.query(
+                    baseline['query'],
+                    variables=baseline.get('variables'),
+                    operation_name=baseline.get('operation_name'),
+                )
+                baseline_errors = " | ".join(extract_error_messages(baseline_result))
+                if is_validation_error(baseline_result):
                     continue
 
                 for payload in payloads:
-                    probe = parser.build_operation(field, operation_kind=operation_kind, overrides={arg_name: payload})
-                    if not probe.get('testable'):
-                        continue
+                    payload_variants = [payload]
+                    if operation_kind == 'query' and arg_type_name == 'String' and payload[:1] in {"'", '"'}:
+                        payload_variants.append(f"test {payload}")
 
-                    result = self.client.query(
-                        probe['query'],
-                        variables=probe.get('variables'),
-                        operation_name=probe.get('operation_name'),
-                    )
+                    for payload_variant in payload_variants:
+                        probe_overrides = dict(common_overrides)
+                        probe_overrides[arg_name] = payload_variant
+                        probe = parser.build_operation(field, operation_kind=operation_kind, overrides=probe_overrides)
+                        if not probe.get('testable'):
+                            continue
 
-                    error_text = " | ".join(extract_error_messages(result))
-                    if error_text and detector(error_text) and not detector(baseline_errors):
-                        finding_title = title
-                        if operation_kind == 'mutation' and 'Mutation' not in title:
-                            finding_title = f"{title} in Mutation"
+                        result = self.client.query(
+                            probe['query'],
+                            variables=probe.get('variables'),
+                            operation_name=probe.get('operation_name'),
+                        )
 
-                        findings.append(create_finding(
-                            title=finding_title,
-                            severity="HIGH",
-                            description=f"Backend error patterns consistent with injection were observed while testing {field.get('name')}.{arg_name} with a crafted payload.",
-                            impact="Injection flaws can allow attackers to manipulate backend queries or command execution paths, leading to unauthorized access, data tampering, or system compromise.",
-                            remediation="Use parameterized queries or driver-native safe APIs, validate all inputs rigorously, and avoid directly concatenating user-controlled values into queries or shell commands.",
-                            cwe=cwe,
-                            scanner="injection",
-                            classification={'kind': 'vulnerability', 'family': 'injection'},
-                            confidence={'level': 'medium', 'reasons': ['Schema-valid baseline probe did not show the backend-specific error signature, while the injection payload did']},
-                            evidence={
-                                'operation_kind': operation_kind,
-                                'field': field.get('name'),
-                                'argument': arg_name,
-                                'payload': payload,
-                                'baseline_errors': baseline_errors[:500],
-                                'payload_errors': error_text[:500]
-                            },
-                            request={
-                                'query': probe['query'],
-                                'variables': probe.get('variables'),
-                                'operation_name': probe.get('operation_name')
-                            },
-                            poc=probe['query'],
-                            url=self.client.url
-                        ))
-                        if len(findings) >= 3:
-                            return findings
+                        error_text = " | ".join(extract_error_messages(result))
+                        if error_text and detector(error_text) and not detector(baseline_errors):
+                            finding_title = title
+                            if operation_kind == 'mutation' and 'Mutation' not in title:
+                                finding_title = f"{title} in Mutation"
+
+                            findings.append(create_finding(
+                                title=finding_title,
+                                severity="HIGH",
+                                description=f"Backend error patterns consistent with injection were observed while testing {field.get('name')}.{arg_name} with a crafted payload.",
+                                impact="Injection flaws can allow attackers to manipulate backend queries or command execution paths, leading to unauthorized access, data tampering, or system compromise.",
+                                remediation="Use parameterized queries or driver-native safe APIs, validate all inputs rigorously, and avoid directly concatenating user-controlled values into queries or shell commands.",
+                                cwe=cwe,
+                                scanner="injection",
+                                classification={'kind': 'vulnerability', 'family': 'injection'},
+                                confidence={'level': 'medium', 'reasons': ['Schema-valid baseline probe did not show the backend-specific error signature, while the injection payload did']},
+                                evidence={
+                                    'operation_kind': operation_kind,
+                                    'field': field.get('name'),
+                                    'argument': arg_name,
+                                    'payload': payload_variant,
+                                    'baseline_errors': baseline_errors[:500],
+                                    'payload_errors': error_text[:500]
+                                },
+                                request={
+                                    'query': probe['query'],
+                                    'variables': probe.get('variables'),
+                                    'operation_name': probe.get('operation_name')
+                                },
+                                poc=probe['query'],
+                                url=self.client.url
+                            ))
+                            finding_emitted_for_arg = True
+                            if len(findings) >= 3:
+                                return findings
+                            break
+                        elif operation_kind == 'query' and self._is_boolean_probe_payload(payload_variant):
+                            baseline_value = self._extract_root_value(baseline_result, field.get('name'))
+                            payload_value = self._extract_root_value(result, field.get('name'))
+                            if self._looks_like_boolean_injection_diff(baseline_value, payload_value):
+                                findings.append(create_finding(
+                                    title=title,
+                                    severity="HIGH",
+                                    description=f"Behavioral differences consistent with boolean-based injection were observed while testing {field.get('name')}.{arg_name} with a crafted payload.",
+                                    impact="Boolean-based injection can let attackers bypass filters, exfiltrate data without verbose errors, or enumerate protected records through true/false response differences.",
+                                    remediation="Use parameterized queries, validate and normalize user-controlled filter values, and avoid interpolating raw input into backend query fragments.",
+                                    cwe=cwe,
+                                    scanner="injection",
+                                    classification={'kind': 'vulnerability', 'family': 'injection'},
+                                    confidence={'level': 'medium', 'reasons': ['Schema-valid baseline and payload probes returned materially different data shapes for a tautology-style payload']},
+                                    evidence={
+                                        'operation_kind': operation_kind,
+                                        'field': field.get('name'),
+                                        'argument': arg_name,
+                                        'payload': payload_variant,
+                                        'baseline_value_type': type(baseline_value).__name__,
+                                        'payload_value_type': type(payload_value).__name__,
+                                        'baseline_count': len(baseline_value) if isinstance(baseline_value, list) else (0 if baseline_value in (None, {}) else 1),
+                                        'payload_count': len(payload_value) if isinstance(payload_value, list) else (0 if payload_value in (None, {}) else 1),
+                                    },
+                                    request={
+                                        'query': probe['query'],
+                                        'variables': probe.get('variables'),
+                                        'operation_name': probe.get('operation_name')
+                                    },
+                                    poc=probe['query'],
+                                    url=self.client.url
+                                ))
+                                finding_emitted_for_arg = True
+                                if len(findings) >= 3:
+                                    return findings
+                                break
+                    if finding_emitted_for_arg:
+                        break
         return findings
 
     def _test_time_based_query_family(self, operation_kind: str, fields: List[Dict], payloads: List[str], title: str, cwe: str) -> List[Dict]:
@@ -348,9 +427,8 @@ class InjectionScanner:
             if is_validation_error(baseline_result):
                 continue
 
-            for arg in args[:2]:
-                if extract_type_name(arg.get('type', {})) != 'String':
-                    continue
+            candidate_args = [arg for arg in args if extract_type_name(arg.get('type', {})) == 'String']
+            for arg in candidate_args[:3]:
 
                 for payload in self.command_payloads[:3]:
                     probe = parser.build_operation(query_def, operation_kind='query', overrides={arg.get('name'): payload})

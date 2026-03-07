@@ -22,3 +22,6 @@ py-modules = ["gqlh"]
 
 [tool.setuptools.packages.find]
 include = ["lib*", "scanners*", "config*"]
+
+[tool.setuptools.data-files]
+"." = ["graphql-hunter.py"]
