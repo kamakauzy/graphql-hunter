@@ -199,6 +199,7 @@ public final class GraphQLHunterModels
     {
         public String mode = "none";
         public String profileName = "";
+        public String authConfigPath = "";
         public boolean detectFailures = true;
         public Map<String, String> authVars = new LinkedHashMap<>();
         public Map<String, String> staticHeaders = new LinkedHashMap<>();
@@ -210,6 +211,7 @@ public final class GraphQLHunterModels
             AuthSettings copy = new AuthSettings();
             copy.mode = mode;
             copy.profileName = profileName;
+            copy.authConfigPath = authConfigPath;
             copy.detectFailures = detectFailures;
             copy.authVars = new LinkedHashMap<>(authVars);
             copy.staticHeaders = new LinkedHashMap<>(staticHeaders);

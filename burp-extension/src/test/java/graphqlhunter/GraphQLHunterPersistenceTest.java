@@ -9,6 +9,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GraphQLHunterPersistenceTest
 {
@@ -37,6 +38,20 @@ class GraphQLHunterPersistenceTest
 
         String persisted = store.getString("graphqlhunter.burp.state");
         assertFalse(persisted.contains("runtime-secret"));
+    }
+
+    @Test
+    void savePersistsAuthConfigPath()
+    {
+        PersistedObject store = fakeStore();
+        GraphQLHunterPersistence persistence = new GraphQLHunterPersistence(store, null);
+        GraphQLHunterModels.ExtensionState state = new GraphQLHunterModels.ExtensionState();
+        state.authSettings.authConfigPath = "/tmp/auth.yaml";
+
+        persistence.save(state);
+
+        String persisted = store.getString("graphqlhunter.burp.state");
+        assertTrue(persisted.contains("/tmp/auth.yaml"));
     }
 
     private PersistedObject fakeStore()

@@ -106,6 +106,7 @@ What it does today:
 - carries imported auth headers into the Burp auth workspace automatically
 - supports runtime-only auth secrets that are not persisted with Burp extension state
 - validates auth against an isolated anonymous baseline instead of reusing the authenticated Burp session
+- can load auth profiles from an external YAML path instead of only the bundled example config
 - includes Burp-side workspaces for:
   - request editing, including operation-name preservation
   - auth setup and validation

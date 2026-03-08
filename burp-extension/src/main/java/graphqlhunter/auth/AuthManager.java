@@ -51,7 +51,7 @@ public final class AuthManager
 
     private static AuthProvider providerFromProfile(GraphQLHunterModels.AuthSettings settings, GraphQLHunterLogger logger)
     {
-        AuthProfileDefinition definition = AuthConfigurationLoader.configuration().profiles.get(settings.profileName);
+        AuthProfileDefinition definition = AuthConfigurationLoader.configuration(settings.authConfigPath).profiles.get(settings.profileName);
         if (definition == null)
         {
             throw new IllegalStateException("Auth profile not found: " + settings.profileName);

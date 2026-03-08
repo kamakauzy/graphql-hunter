@@ -6,6 +6,8 @@ import graphqlhunter.auth.config.AuthConfigurationLoader;
 import graphqlhunter.auth.config.AuthProfileDefinition;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -84,6 +86,36 @@ class AuthFoundationTest
         settings.profileName = "unsupported_profile";
 
         assertThrows(IllegalStateException.class, () -> AuthManager.fromState(settings, null));
+    }
+
+    @Test
+    void loadsProfileFromExternalAuthConfigPath() throws Exception
+    {
+        Path config = Files.createTempFile("gqlh-auth", ".yaml");
+        try
+        {
+            Files.writeString(config, """
+                profiles:
+                  external_bearer:
+                    type: bearer
+                    header_name: Authorization
+                    var: access_token
+                    prefix: Bearer
+                """);
+            GraphQLHunterModels.AuthSettings settings = new GraphQLHunterModels.AuthSettings();
+            settings.mode = "profile";
+            settings.profileName = "external_bearer";
+            settings.authConfigPath = config.toString();
+            settings.authVars.put("access_token", "external-token");
+
+            AuthManager manager = AuthManager.fromState(settings, null);
+
+            assertEquals("Bearer external-token", manager.requestHeaders().get("Authorization"));
+        }
+        finally
+        {
+            Files.deleteIfExists(config);
+        }
     }
 
     @Test

@@ -75,6 +75,8 @@ public final class GraphQLHunterTab extends JPanel
     private final JComboBox<String> authModeCombo = new JComboBox<>(new String[]{"none", "imported_headers", "static_headers", "profile"});
     private final JComboBox<String> authProfileCombo = new JComboBox<>();
     private final JCheckBox authDetectFailuresCheck = new JCheckBox("Detect auth failures / retry once");
+    private final JTextField authConfigPathField = new JTextField();
+    private final JButton reloadAuthProfilesButton = new JButton("Reload Profiles");
     private final JTextField importNameField = new JTextField("request.txt");
     private final JComboBox<String> importFormatCombo = new JComboBox<>(new String[]{"auto", "curl", "raw_http", "json", "yaml", "postman"});
     private final JComboBox<String> importedRequestCombo = new JComboBox<>();
@@ -153,7 +155,7 @@ public final class GraphQLHunterTab extends JPanel
         discoveryResultArea.setWrapStyleWord(true);
         discoveryResultArea.setEditable(false);
 
-        AuthConfigurationLoader.configuration().profiles.keySet().forEach(authProfileCombo::addItem);
+        reloadAuthProfiles("");
 
         logger.addListener(line -> SwingUtilities.invokeLater(() ->
         {
@@ -174,6 +176,7 @@ public final class GraphQLHunterTab extends JPanel
 
         scanButton.addActionListener(event -> runScan());
         validateAuthButton.addActionListener(event -> runAuthValidation());
+        reloadAuthProfilesButton.addActionListener(event -> reloadAuthProfiles(authConfigPathField.getText().trim()));
         saveButton.addActionListener(event -> saveState());
         importParseButton.addActionListener(event -> parseImportedContent());
         importApplyButton.addActionListener(event -> applyImportedRequest());
@@ -360,6 +363,17 @@ public final class GraphQLHunterTab extends JPanel
 
         gbc.gridx = 0;
         gbc.gridy = 1;
+        gbc.gridwidth = 1;
+        panel.add(new JLabel("Auth Config"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 0.6;
+        panel.add(authConfigPathField, gbc);
+        gbc.gridx = 2;
+        gbc.weightx = 0;
+        panel.add(reloadAuthProfilesButton, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 2;
         gbc.gridwidth = 2;
         panel.add(authDetectFailuresCheck, gbc);
 
@@ -367,7 +381,7 @@ public final class GraphQLHunterTab extends JPanel
         gbc.gridwidth = 2;
         panel.add(validateAuthButton, gbc);
 
-        gbc.gridy = 2;
+        gbc.gridy = 3;
         gbc.gridx = 0;
         gbc.weightx = 1.0;
         gbc.gridwidth = 4;
@@ -375,16 +389,16 @@ public final class GraphQLHunterTab extends JPanel
         gbc.fill = GridBagConstraints.BOTH;
         panel.add(labeledScroll("Auth Variables (key=value)", authVarsArea, 160), gbc);
 
-        gbc.gridy = 3;
+        gbc.gridy = 4;
         panel.add(labeledScroll("Runtime-only Secrets (not persisted)", runtimeSecretsArea, 120), gbc);
 
-        gbc.gridy = 4;
+        gbc.gridy = 5;
         panel.add(labeledScroll("Static Auth Headers", authStaticHeadersArea, 140), gbc);
 
-        gbc.gridy = 5;
+        gbc.gridy = 6;
         panel.add(labeledScroll("Imported Auth Headers (read-only)", authImportedHeadersArea, 140), gbc);
 
-        gbc.gridy = 6;
+        gbc.gridy = 7;
         panel.add(labeledScroll("Auth Validation Result", authValidationArea, 160), gbc);
 
         return panel;
@@ -509,6 +523,8 @@ public final class GraphQLHunterTab extends JPanel
         if (state.authSettings != null)
         {
             authModeCombo.setSelectedItem(state.authSettings.mode == null || state.authSettings.mode.isBlank() ? "none" : state.authSettings.mode);
+            authConfigPathField.setText(state.authSettings.authConfigPath == null ? "" : state.authSettings.authConfigPath);
+            reloadAuthProfiles(authConfigPathField.getText().trim());
             if (state.authSettings.profileName != null && !state.authSettings.profileName.isBlank())
             {
                 authProfileCombo.setSelectedItem(state.authSettings.profileName);
@@ -809,12 +825,32 @@ public final class GraphQLHunterTab extends JPanel
         AuthSettings settings = existing == null ? new AuthSettings() : existing.copy();
         settings.mode = String.valueOf(authModeCombo.getSelectedItem());
         settings.profileName = authProfileCombo.getSelectedItem() == null ? "" : String.valueOf(authProfileCombo.getSelectedItem());
+        settings.authConfigPath = authConfigPathField.getText().trim();
         settings.detectFailures = authDetectFailuresCheck.isSelected();
         settings.authVars = parseKeyValueMap(authVarsArea.getText());
         settings.runtimeOnlySecrets = parseKeyValueMap(runtimeSecretsArea.getText());
         settings.staticHeaders = parseHeaders(authStaticHeadersArea.getText());
         settings.importedAuthHeaders = parseHeaders(authImportedHeadersArea.getText());
         return settings;
+    }
+
+    private void reloadAuthProfiles(String path)
+    {
+        String currentSelection = authProfileCombo.getSelectedItem() == null ? "" : String.valueOf(authProfileCombo.getSelectedItem());
+        authProfileCombo.removeAllItems();
+        try
+        {
+            AuthConfigurationLoader.configuration(path).profiles.keySet().forEach(authProfileCombo::addItem);
+            if (!currentSelection.isBlank())
+            {
+                authProfileCombo.setSelectedItem(currentSelection);
+            }
+        }
+        catch (RuntimeException exception)
+        {
+            logger.warn("Failed to load auth profiles: " + exception.getMessage());
+            statusLabel.setText("Failed to load auth profiles.");
+        }
     }
 
     private void applyImportedAuthHeaders(Map<String, String> headers)
