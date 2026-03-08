@@ -204,8 +204,7 @@ These are the most important next tasks.
 ### Scanner fidelity
 - some Java scanners are present but still lighter than the Python versions
 - especially worth improving:
-  - injection boolean-differential sophistication
-  - JWT expired-token acceptance behavior
+  - deeper boolean-differential injection sophistication beyond the current conservative list-count heuristic
   - file upload exploitation depth
   - CSRF token/cookie handling depth
   - mutation fuzzer behavior depth

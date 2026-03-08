@@ -540,6 +540,15 @@ public final class GraphQLHunterScanners
                     {
                         break;
                     }
+                    if ("query".equals(operationKind) && "String".equals(typeName) && context.configuration().enableDeepInjection)
+                    {
+                        Finding booleanFinding = emitBooleanDifferentialFinding(context, field, operationKind, schema, argName);
+                        if (booleanFinding != null)
+                        {
+                            findings.add(booleanFinding);
+                            break;
+                        }
+                    }
                     if (emitPayloadFindings(context, findings, field, operationKind, schema, argName, context.payloads().nosqlInjection, baselineErrors, NOSQL_ERRORS, "Possible NoSQL Injection Behavior", FindingSeverity.HIGH))
                     {
                         break;
@@ -612,6 +621,97 @@ public final class GraphQLHunterScanners
                 }
             }
             return false;
+        }
+
+        private Finding emitBooleanDifferentialFinding(
+            ScanContext context,
+            Map<String, Object> field,
+            String operationKind,
+            Map<String, Object> schema,
+            String argName
+        )
+        {
+            Map<String, Object> commonOverrides = new LinkedHashMap<>();
+            for (Map<String, Object> extraArg : GraphQLHunterCore.asList(field.get("args")))
+            {
+                if ("limit".equals(String.valueOf(extraArg.get("name")))
+                    && "Int".equals(GraphQLHunterCore.extractTypeName(GraphQLHunterCore.asMap(extraArg.get("type")))))
+                {
+                    commonOverrides.put("limit", 5);
+                }
+            }
+
+            Map<String, Object> baselineOverrides = new LinkedHashMap<>(commonOverrides);
+            baselineOverrides.put(argName, "__gqlh_baseline__");
+            Operation baseline = GraphQLHunterCore.buildOperation(schema, field, operationKind, baselineOverrides);
+            if (!baseline.testable)
+            {
+                return null;
+            }
+            GraphQLResponse baselineResponse = context.client().query(baseline.query, baseline.variables, baseline.operationName);
+            if (!isComparableBooleanResponse(baselineResponse))
+            {
+                return null;
+            }
+
+            int baselineCount = extractRootListCount(baselineResponse, String.valueOf(field.get("name")));
+            if (baselineCount < 0)
+            {
+                return null;
+            }
+
+            for (String payload : context.payloads().sqlInjection.basic)
+            {
+                if (!isBooleanSqlPayload(payload))
+                {
+                    continue;
+                }
+                String falseControl = falseControlPayload(payload);
+                if (falseControl == null)
+                {
+                    continue;
+                }
+
+                Operation trueProbe = GraphQLHunterCore.buildOperation(schema, field, operationKind, override(commonOverrides, argName, payload));
+                Operation falseProbe = GraphQLHunterCore.buildOperation(schema, field, operationKind, override(commonOverrides, argName, falseControl));
+                if (!trueProbe.testable || !falseProbe.testable)
+                {
+                    continue;
+                }
+
+                GraphQLResponse trueResponse = context.client().query(trueProbe.query, trueProbe.variables, trueProbe.operationName);
+                GraphQLResponse falseResponse = context.client().query(falseProbe.query, falseProbe.variables, falseProbe.operationName);
+                if (!responsesComparableForBooleanDiff(baselineResponse, falseResponse, trueResponse))
+                {
+                    continue;
+                }
+
+                int trueCount = extractRootListCount(trueResponse, String.valueOf(field.get("name")));
+                int falseCount = extractRootListCount(falseResponse, String.valueOf(field.get("name")));
+                if (trueCount >= Math.max(baselineCount, falseCount) + 2 && falseCount <= baselineCount + 1)
+                {
+                    Finding finding = finding(
+                        "Potential Boolean-Differential SQL Injection Behavior",
+                        name(),
+                        FindingSeverity.HIGH,
+                        FindingStatus.MANUAL_REVIEW,
+                        "A tautology-style SQL payload produced materially broader list results than both the baseline and a false-control payload.",
+                        "Boolean-differential responses can indicate that attacker-controlled input is influencing backend query predicates even when no explicit SQL errors are exposed.",
+                        "Review how filter arguments are composed into backend queries, use parameterized queries, and verify that tautology-style input does not broaden result sets."
+                    );
+                    finding.proof = trueProbe.query;
+                    finding.requestSnippet = trueProbe.query;
+                    finding.evidence.put("field", field.get("name"));
+                    finding.evidence.put("argument", argName);
+                    finding.evidence.put("payload_true", payload);
+                    finding.evidence.put("payload_false", falseControl);
+                    finding.evidence.put("baseline_count", baselineCount);
+                    finding.evidence.put("false_count", falseCount);
+                    finding.evidence.put("true_count", trueCount);
+                    return finding;
+                }
+            }
+            return null;
         }
 
         private Finding emitTimeBasedFinding(
@@ -730,6 +830,60 @@ public final class GraphQLHunterScanners
                 }
             }
             return 5000L;
+        }
+
+        private boolean isBooleanSqlPayload(String payload)
+        {
+            String lowered = payload == null ? "" : payload.toLowerCase(Locale.ROOT);
+            return lowered.contains("1=1") || lowered.contains("'a'='a") || lowered.contains("\"a\"=\"a");
+        }
+
+        private String falseControlPayload(String payload)
+        {
+            if (payload == null)
+            {
+                return null;
+            }
+            return payload
+                .replace("1=1", "1=2")
+                .replace("'a'='a", "'a'='b")
+                .replace("\"a\"=\"a", "\"a\"=\"b");
+        }
+
+        private Map<String, Object> override(Map<String, Object> commonOverrides, String argName, String payload)
+        {
+            LinkedHashMap<String, Object> overrides = new LinkedHashMap<>(commonOverrides);
+            overrides.put(argName, payload);
+            return overrides;
+        }
+
+        private boolean isComparableBooleanResponse(GraphQLResponse response)
+        {
+            return response != null && response.statusCode == 200 && response.hasData() && response.errorsText().isBlank();
+        }
+
+        private boolean responsesComparableForBooleanDiff(GraphQLResponse baseline, GraphQLResponse falseResponse, GraphQLResponse trueResponse)
+        {
+            return isComparableBooleanResponse(baseline)
+                && isComparableBooleanResponse(falseResponse)
+                && isComparableBooleanResponse(trueResponse)
+                && baseline.statusCode == falseResponse.statusCode
+                && baseline.statusCode == trueResponse.statusCode;
+        }
+
+        private int extractRootListCount(GraphQLResponse response, String fieldName)
+        {
+            Object data = response.bodyMap().get("data");
+            if (!(data instanceof Map<?, ?> map))
+            {
+                return -1;
+            }
+            Object value = map.get(fieldName);
+            if (!(value instanceof List<?> list))
+            {
+                return -1;
+            }
+            return list.size();
         }
     }
 
@@ -1309,6 +1463,7 @@ public final class GraphQLHunterScanners
                         finding.evidence.put("exp", expires);
                         finding.evidence.put("current", current);
                         findings.add(finding);
+                        findings.addAll(testExpiredTokenAcceptance(context, headerName, token, expires));
                     }
                     else if (iat != null)
                     {
@@ -1383,6 +1538,43 @@ public final class GraphQLHunterScanners
                 finding.evidence.put("header", headerName);
                 finding.evidence.put("forged_token_accepted", true);
                 findingsAddContext(finding, forged);
+                return List.of(finding);
+            }
+            return List.of();
+        }
+
+        private List<Finding> testExpiredTokenAcceptance(ScanContext context, String headerName, String token, long expires)
+        {
+            if (headerName == null || headerName.isBlank() || token == null || token.isBlank())
+            {
+                return List.of();
+            }
+            GraphQLResponse unauthenticated = context.client().withoutAuth().query("{ __typename }", null, null);
+            String headerValue = "Authorization".equalsIgnoreCase(headerName) ? "Bearer " + token : token;
+            GraphQLResponse expiredTokenResponse = context.client().withoutAuth().query(
+                "{ __typename }",
+                null,
+                null,
+                Map.of(headerName, headerValue),
+                true
+            );
+            if (expiredTokenResponse.hasData()
+                && (!unauthenticated.hasData() || unauthenticated.statusCode != expiredTokenResponse.statusCode || containsAuthFailure(unauthenticated.errorsText())))
+            {
+                Finding finding = finding(
+                    "Expired JWT Token Still Accepted",
+                    name(),
+                    FindingSeverity.HIGH,
+                    FindingStatus.CONFIRMED,
+                    "The endpoint accepted a benign GraphQL request authenticated only with an already expired JWT.",
+                    "If expired JWTs are still honored, attackers may be able to replay stale credentials indefinitely.",
+                    "Validate the exp claim on every request and reject expired JWTs immediately."
+                );
+                finding.proof = "Use expired token in " + headerName + " header";
+                finding.requestSnippet = "{ __typename }";
+                finding.evidence.put("header", headerName);
+                finding.evidence.put("exp", expires);
+                findingsAddContext(finding, expiredTokenResponse);
                 return List.of(finding);
             }
             return List.of();

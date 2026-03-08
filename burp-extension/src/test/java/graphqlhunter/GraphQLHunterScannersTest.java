@@ -92,6 +92,25 @@ class GraphQLHunterScannersTest
         assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Large GraphQL Batches Accepted")));
     }
 
+    @Test
+    void injectionLiteScannerFindsBooleanDifferentialSqlProbe()
+    {
+        ScanRequest request = new ScanRequest();
+        request.url = "https://api.example.com/graphql";
+        GraphQLClient client = new GraphQLClient(request.url, Map.of(), new BooleanTransport(), null);
+        GraphQLHunterScanners.ScanContext context = new GraphQLHunterScanners.ScanContext(
+            request,
+            ConfigurationLoader.scanConfiguration(new ScanSettings()),
+            client,
+            null,
+            ConfigurationLoader.payloads()
+        );
+
+        List<Finding> findings = new GraphQLHunterScanners.InjectionLiteScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Boolean-Differential")));
+    }
+
     private static class FakeTransport implements GraphQLHunterCore.GraphQLTransport
     {
         @Override
@@ -122,6 +141,23 @@ class GraphQLHunterScannersTest
                                         }
                                       ],
                                       "type": { "kind": "OBJECT", "name": "LookupResponse" }
+                                    },
+                                    {
+                                      "name": "filterPastes",
+                                      "args": [
+                                        {
+                                          "name": "filter",
+                                          "type": { "kind": "SCALAR", "name": "String" }
+                                        },
+                                        {
+                                          "name": "limit",
+                                          "type": { "kind": "SCALAR", "name": "Int" }
+                                        }
+                                      ],
+                                      "type": {
+                                        "kind": "LIST",
+                                        "ofType": { "kind": "OBJECT", "name": "PasteObject" }
+                                      }
                                     }
                                   ]
                                 },
@@ -130,6 +166,13 @@ class GraphQLHunterScannersTest
                                   "name": "LookupResponse",
                                   "fields": [
                                     { "name": "message", "args": [], "type": { "kind": "SCALAR", "name": "String" } }
+                                  ]
+                                },
+                                {
+                                  "kind": "OBJECT",
+                                  "name": "PasteObject",
+                                  "fields": [
+                                    { "name": "title", "args": [], "type": { "kind": "SCALAR", "name": "String" } }
                                   ]
                                 },
                                 { "kind": "SCALAR", "name": "String" },
@@ -156,6 +199,20 @@ class GraphQLHunterScannersTest
                         return response(Map.of("errors", List.of(Map.of("message", "SQLSTATE syntax error near SELECT"))), 10L);
                     }
                     return response(Map.of("data", Map.of("lookup", Map.of("message", "ok"))), 100L);
+                }
+                if (query.contains("filterPastes"))
+                {
+                    Object variables = map.get("variables");
+                    String filter = variables instanceof Map<?, ?> valueMap ? String.valueOf(valueMap.get("filter")) : "";
+                    if (filter.contains("' OR '1'='1") || filter.contains("' OR 'a'='a"))
+                    {
+                        return response(Map.of("data", Map.of("filterPastes", List.of(
+                            Map.of("title", "One"),
+                            Map.of("title", "Two"),
+                            Map.of("title", "Three")
+                        ))), 100L);
+                    }
+                    return response(Map.of("data", Map.of("filterPastes", List.of())), 100L);
                 }
             }
 
@@ -205,5 +262,9 @@ class GraphQLHunterScannersTest
             }
             return super.postJson(url, headers, body);
         }
+    }
+
+    private static final class BooleanTransport extends FakeTransport
+    {
     }
 }

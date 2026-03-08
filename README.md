@@ -117,12 +117,12 @@ What it does today:
   - information disclosure
   - auth exposure differentials
   - batching and large-batch review
-  - injection, including query-only time-based delay probes in deep-enabled profiles
+  - injection, including query-only time-based and conservative boolean-differential probes in deep-enabled profiles
   - DoS / depth / complexity
   - aliasing
   - circular query review
   - XSS reflection review
-  - JWT review, including `alg:none` acceptance checks
+  - JWT review, including `alg:none` and expired-token acceptance checks
   - concurrent rate limiting
   - CSRF review, including cross-site origin validation probes
   - file upload surface review

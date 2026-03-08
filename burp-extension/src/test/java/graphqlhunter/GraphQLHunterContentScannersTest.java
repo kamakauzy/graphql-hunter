@@ -41,6 +41,18 @@ class GraphQLHunterContentScannersTest
     }
 
     @Test
+    void jwtScannerDetectsExpiredTokenAcceptance()
+    {
+        String header = jwtToken(InstantEpoch.nowMinus(3600), InstantEpoch.nowMinus(60));
+        GraphQLHunterScanners.ScanContext context = context(Map.of("Authorization", "Bearer " + header), new ContentTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.JwtScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Expired JWT Token Detected")));
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Expired JWT Token Still Accepted")));
+    }
+
+    @Test
     void jwtScannerDetectsNoneAlgorithmAcceptance()
     {
         String header = jwtToken(InstantEpoch.nowMinus(60), InstantEpoch.nowPlus(3600));
