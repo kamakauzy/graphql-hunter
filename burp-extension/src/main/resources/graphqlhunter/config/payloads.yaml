@@ -58,6 +58,7 @@ profiles:
     rate_limit_concurrency: 25
     rate_limit_requests: 50
     max_xss_tests: 10
+    max_upload_test_size: 512
     timeout: 10
     description: "Fast scan with minimal tests"
 
@@ -74,6 +75,7 @@ profiles:
     rate_limit_concurrency: 50
     rate_limit_requests: 100
     max_xss_tests: 20
+    max_upload_test_size: 1024
     timeout: 30
     description: "Balanced scan with good coverage"
 
@@ -90,6 +92,7 @@ profiles:
     rate_limit_concurrency: 75
     rate_limit_requests: 150
     max_xss_tests: 30
+    max_upload_test_size: 2048
     timeout: 60
     description: "Thorough scan with extensive tests"
 
@@ -106,6 +109,7 @@ profiles:
     rate_limit_concurrency: 10
     rate_limit_requests: 20
     max_xss_tests: 5
+    max_upload_test_size: 512
     timeout: 30
     delay: 1.0
     description: "Slow, stealthy scan to avoid detection"

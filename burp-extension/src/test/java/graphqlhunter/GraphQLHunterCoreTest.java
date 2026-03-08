@@ -209,6 +209,51 @@ class GraphQLHunterCoreTest
         assertTrue(transport.lastBody.contains("filename=\"proof.txt\""));
     }
 
+    @Test
+    void findUploadTargetsSupportsNestedInputUploads()
+    {
+        Map<String, Object> schema = GraphQLHunterJson.readMap("""
+            {
+              "queryType": { "name": "Query" },
+              "mutationType": { "name": "Mutation" },
+              "types": [
+                {
+                  "kind": "OBJECT",
+                  "name": "Mutation",
+                  "fields": [
+                    {
+                      "name": "uploadAsset",
+                      "args": [
+                        {
+                          "name": "input",
+                          "type": { "kind": "NON_NULL", "ofType": { "kind": "INPUT_OBJECT", "name": "UploadAssetInput" } }
+                        }
+                      ],
+                      "type": { "kind": "OBJECT", "name": "MutationResponse" }
+                    }
+                  ]
+                },
+                {
+                  "kind": "INPUT_OBJECT",
+                  "name": "UploadAssetInput",
+                  "inputFields": [
+                    { "name": "title", "type": { "kind": "SCALAR", "name": "String" } },
+                    { "name": "file", "type": { "kind": "NON_NULL", "ofType": { "kind": "SCALAR", "name": "Upload" } } }
+                  ]
+                },
+                { "kind": "SCALAR", "name": "String" },
+                { "kind": "SCALAR", "name": "Upload" }
+              ]
+            }
+            """);
+        Map<String, Object> mutation = GraphQLHunterCore.getRootFields(schema, "mutationType").getFirst();
+
+        List<GraphQLHunterCore.UploadTarget> targets = GraphQLHunterCore.findUploadTargets(schema, mutation);
+
+        assertEquals(1, targets.size());
+        assertEquals("variables.input.file", targets.getFirst().variablePath);
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> sampleSchema()
     {

@@ -205,7 +205,7 @@ These are the most important next tasks.
 - some Java scanners are present but still lighter than the Python versions
 - especially worth improving:
   - deeper boolean-differential injection sophistication beyond the current conservative list-count heuristic
-  - deeper file-upload exploitation depth, especially fuller multipart Upload replay/import parity and oversized-file behavior
+  - deeper file-upload replay/import fidelity, though live multipart, nested-target, and oversize probing are now present
   - deeper CSRF token/cookie handling depth beyond the current origin and token-presence checks
   - mutation fuzzer behavior depth
 

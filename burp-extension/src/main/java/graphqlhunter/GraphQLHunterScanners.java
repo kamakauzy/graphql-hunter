@@ -2229,7 +2229,7 @@ public final class GraphQLHunterScanners
             for (GraphQLHunterCore.UploadTarget target : uploadTargets)
             {
                 Finding traversal = probeMultipartUploadPayload(
-                    context, schema, mutation, mutationName, target, PATH_TRAVERSAL_PAYLOADS,
+                    context, schema, mutation, mutationName, uploadTargets, target, PATH_TRAVERSAL_PAYLOADS,
                     "Potential Path Traversal in File Upload",
                     FindingSeverity.HIGH,
                     "Upload mutation accepted a traversal-style filename through a multipart Upload argument.",
@@ -2242,7 +2242,7 @@ public final class GraphQLHunterScanners
                 }
 
                 Finding extension = probeMultipartUploadPayload(
-                    context, schema, mutation, mutationName, target, DANGEROUS_EXTENSIONS,
+                    context, schema, mutation, mutationName, uploadTargets, target, DANGEROUS_EXTENSIONS,
                     "Potential Dangerous File Type Upload",
                     FindingSeverity.MEDIUM,
                     "Upload mutation accepted a dangerous multipart filename extension.",
@@ -2252,6 +2252,15 @@ public final class GraphQLHunterScanners
                 if (extension != null)
                 {
                     return extension;
+                }
+
+                if (!context.configuration().safeMode)
+                {
+                    Finding oversize = probeMultipartOversizedUpload(context, schema, mutation, mutationName, uploadTargets, target);
+                    if (oversize != null)
+                    {
+                        return oversize;
+                    }
                 }
             }
             return null;
@@ -2298,6 +2307,15 @@ public final class GraphQLHunterScanners
             if (extension != null)
             {
                 return extension;
+            }
+
+            if (!context.configuration().safeMode)
+            {
+                Finding oversize = probeOversizedStringUpload(context, schema, mutation, mutationName, filenameArg, contentArg);
+                if (oversize != null)
+                {
+                    return oversize;
+                }
             }
 
             return probeUploadPayload(
@@ -2370,6 +2388,7 @@ public final class GraphQLHunterScanners
             Map<String, Object> schema,
             Map<String, Object> mutation,
             String mutationName,
+            List<GraphQLHunterCore.UploadTarget> allTargets,
             GraphQLHunterCore.UploadTarget target,
             List<String> payloads,
             String title,
@@ -2393,7 +2412,7 @@ public final class GraphQLHunterScanners
                     Map.of(),
                     false,
                     Set.of(),
-                    Map.of(target.variablePath, new GraphQLHunterCore.UploadPart(payload, "upload-test".getBytes(StandardCharsets.UTF_8), "text/plain"))
+                    multipartUploads(allTargets, target, payload, "upload-test".getBytes(StandardCharsets.UTF_8), "text/plain")
                 );
                 if (response.hasData() && response.errorsText().isBlank())
                 {
@@ -2416,6 +2435,122 @@ public final class GraphQLHunterScanners
                 }
             }
             return null;
+        }
+
+        private Finding probeMultipartOversizedUpload(
+            ScanContext context,
+            Map<String, Object> schema,
+            Map<String, Object> mutation,
+            String mutationName,
+            List<GraphQLHunterCore.UploadTarget> allTargets,
+            GraphQLHunterCore.UploadTarget target
+        )
+        {
+            Operation probe = GraphQLHunterCore.buildOperation(schema, mutation, "mutation", Map.of());
+            if (!probe.testable)
+            {
+                return null;
+            }
+            int oversizeBytes = Math.max(256, context.configuration().maxUploadTestSize) + 1;
+            byte[] content = "A".repeat(oversizeBytes).getBytes(StandardCharsets.UTF_8);
+            GraphQLResponse response = context.client().query(
+                probe.query,
+                probe.variables,
+                probe.operationName,
+                Map.of(),
+                false,
+                Set.of(),
+                multipartUploads(allTargets, target, "oversized.txt", content, "text/plain")
+            );
+            if (response.hasData() && response.errorsText().isBlank())
+            {
+                Finding finding = finding(
+                    "Potential Missing File Size Limit",
+                    name(),
+                    FindingSeverity.MEDIUM,
+                    FindingStatus.POTENTIAL,
+                    "Upload mutation accepted a multipart file slightly larger than the configured upload test threshold.",
+                    "Missing or weak file size limits can enable storage exhaustion, memory pressure, and degraded service performance.",
+                    "Enforce hard server-side upload size limits and reject oversized files before expensive processing begins."
+                );
+                finding.proof = probe.query;
+                finding.requestSnippet = probe.query;
+                finding.evidence.put("mutation", mutationName);
+                finding.evidence.put("upload_target", target.variablePath);
+                finding.evidence.put("tested_size_bytes", oversizeBytes);
+                findingsAddContext(finding, response);
+                return finding;
+            }
+            return null;
+        }
+
+        private Finding probeOversizedStringUpload(
+            ScanContext context,
+            Map<String, Object> schema,
+            Map<String, Object> mutation,
+            String mutationName,
+            String filenameArg,
+            String contentArg
+        )
+        {
+            int oversizeBytes = Math.max(256, context.configuration().maxUploadTestSize) + 1;
+            Operation probe = GraphQLHunterCore.buildOperation(
+                schema,
+                mutation,
+                "mutation",
+                Map.of(
+                    filenameArg, "oversized.txt",
+                    contentArg, "A".repeat(oversizeBytes)
+                )
+            );
+            if (!probe.testable)
+            {
+                return null;
+            }
+            GraphQLResponse response = context.client().query(probe.query, probe.variables, probe.operationName);
+            if (response.hasData() && response.errorsText().isBlank())
+            {
+                Finding finding = finding(
+                    "Potential Missing File Size Limit",
+                    name(),
+                    FindingSeverity.MEDIUM,
+                    FindingStatus.POTENTIAL,
+                    "Upload-like mutation accepted a string-backed payload slightly larger than the configured upload test threshold.",
+                    "Missing or weak size limits can allow attackers to consume storage or memory with oversized upload-style content.",
+                    "Enforce server-side size limits for upload-like mutations and reject oversized payloads as early as possible."
+                );
+                finding.proof = probe.query;
+                finding.requestSnippet = probe.query;
+                finding.evidence.put("mutation", mutationName);
+                finding.evidence.put("filename_argument", filenameArg);
+                finding.evidence.put("tested_size_bytes", oversizeBytes);
+                findingsAddContext(finding, response);
+                return finding;
+            }
+            return null;
+        }
+
+        private Map<String, GraphQLHunterCore.UploadPart> multipartUploads(
+            List<GraphQLHunterCore.UploadTarget> allTargets,
+            GraphQLHunterCore.UploadTarget activeTarget,
+            String filename,
+            byte[] content,
+            String contentType
+        )
+        {
+            LinkedHashMap<String, GraphQLHunterCore.UploadPart> uploads = new LinkedHashMap<>();
+            for (GraphQLHunterCore.UploadTarget target : allTargets)
+            {
+                if (target.variablePath.equals(activeTarget.variablePath))
+                {
+                    uploads.put(target.variablePath, new GraphQLHunterCore.UploadPart(filename, content, contentType));
+                }
+                else
+                {
+                    uploads.put(target.variablePath, new GraphQLHunterCore.UploadPart("filler.txt", "upload-test".getBytes(StandardCharsets.UTF_8), "text/plain"));
+                }
+            }
+            return uploads;
         }
 
         private String pickArgName(Map<String, Map<String, Object>> argByName, String... candidates)

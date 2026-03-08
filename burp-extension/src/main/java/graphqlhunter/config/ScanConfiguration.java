@@ -23,6 +23,7 @@ public final class ScanConfiguration
     public int rateLimitConcurrency = 50;
     public int rateLimitRequests = 100;
     public int maxXssTests = 20;
+    public int maxUploadTestSize = 1024;
     public final Map<String, Boolean> scannerEnabled = new LinkedHashMap<>();
 
     public boolean isScannerEnabled(String scannerName)

@@ -14,6 +14,7 @@ public final class ProfileSettings
     public int rateLimitConcurrency = 50;
     public int rateLimitRequests = 100;
     public int maxXssTests = 20;
+    public int maxUploadTestSize = 1024;
     public int timeout = 30;
     public double delay = 0.0;
     public String description = "";

@@ -127,7 +127,7 @@ What it does today:
   - JWT review, including `alg:none` and expired-token acceptance checks
   - concurrent rate limiting
   - CSRF review, including missing-origin suppression and cross-site origin validation probes
-  - file upload surface review plus live probes for string-backed and initial multipart Upload mutations
+  - file upload surface review plus live probes for string-backed, multipart, nested-target, and oversize upload mutations
   - mutation review heuristics
 
 The Burp addon is **additive**. The existing Python CLI remains the primary standalone workflow and is unchanged.

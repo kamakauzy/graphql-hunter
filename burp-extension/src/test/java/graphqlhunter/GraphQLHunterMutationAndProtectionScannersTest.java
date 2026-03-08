@@ -104,6 +104,48 @@ class GraphQLHunterMutationAndProtectionScannersTest
         assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Path Traversal")));
     }
 
+    @Test
+    void fileUploadScannerFlagsAcceptedOversizedMultipartUpload()
+    {
+        GraphQLHunterScanners.ScanContext context = context(Map.of(), new OversizedUploadTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.FileUploadScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Missing File Size Limit")));
+    }
+
+    @Test
+    void fileUploadScannerSkipsOversizedUploadInSafeMode()
+    {
+        ScanRequest request = new ScanRequest();
+        request.url = "https://api.example.com/graphql";
+        ScanSettings settings = new ScanSettings();
+        settings.profileName = GraphQLHunterModels.ScanProfile.STANDARD.name();
+        settings.safeMode = true;
+        GraphQLClient client = new GraphQLClient(request.url, request.headers, new OversizedUploadTransport(), null);
+        GraphQLHunterScanners.ScanContext context = new GraphQLHunterScanners.ScanContext(
+            request,
+            ConfigurationLoader.scanConfiguration(settings),
+            client,
+            null,
+            ConfigurationLoader.payloads()
+        );
+
+        List<Finding> findings = new GraphQLHunterScanners.FileUploadScanner().scan(context);
+
+        assertTrue(findings.stream().noneMatch(finding -> finding.title.contains("Missing File Size Limit")));
+    }
+
+    @Test
+    void fileUploadScannerSuppliesAllUploadTargetsForMultiUploadMutation()
+    {
+        GraphQLHunterScanners.ScanContext context = context(Map.of(), new NestedMultipartUploadTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.FileUploadScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Path Traversal")));
+    }
+
     private GraphQLHunterScanners.ScanContext context(Map<String, String> headers, GraphQLHunterCore.SessionAwareTransport transport)
     {
         ScanRequest request = new ScanRequest();
@@ -378,6 +420,89 @@ class GraphQLHunterMutationAndProtectionScannersTest
             if (dataBody != null && dataBody.contains("../../../etc/passwd"))
             {
                 return response(Map.of("data", Map.of("uploadBinary", Map.of("ok", true))), 5L);
+            }
+            return super.executeHttp(method, url, headers, jsonBody, formBody, dataBody);
+        }
+    }
+
+    private static final class OversizedUploadTransport extends RejectingUploadTransport
+    {
+        @Override
+        public GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            if (dataBody != null && dataBody.contains("oversized.txt") && dataBody.length() > 1500)
+            {
+                return response(Map.of("data", Map.of("uploadBinary", Map.of("ok", true))), 5L);
+            }
+            return super.executeHttp(method, url, headers, jsonBody, formBody, dataBody);
+        }
+    }
+
+    private static final class NestedMultipartUploadTransport extends RejectingUploadTransport
+    {
+        @Override
+        public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            if (body instanceof Map<?, ?> payload && String.valueOf(payload.get("query")).contains("IntrospectionQuery"))
+            {
+                return response(GraphQLHunterJson.readMap("""
+                    {
+                      "data": {
+                        "__schema": {
+                          "queryType": { "name": "Query" },
+                          "mutationType": { "name": "Mutation" },
+                          "types": [
+                            {
+                              "kind": "OBJECT",
+                              "name": "Mutation",
+                              "fields": [
+                                {
+                                  "name": "uploadBundle",
+                                  "args": [
+                                    {
+                                      "name": "input",
+                                      "type": { "kind": "NON_NULL", "ofType": { "kind": "INPUT_OBJECT", "name": "UploadBundleInput" } }
+                                    }
+                                  ],
+                                  "type": { "kind": "OBJECT", "name": "MutationResponse" }
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "INPUT_OBJECT",
+                              "name": "UploadBundleInput",
+                              "inputFields": [
+                                { "name": "file", "type": { "kind": "SCALAR", "name": "Upload" } },
+                                { "name": "thumbnail", "type": { "kind": "SCALAR", "name": "Upload" } }
+                              ]
+                            },
+                            {
+                              "kind": "OBJECT",
+                              "name": "MutationResponse",
+                              "fields": [
+                                { "name": "ok", "args": [], "type": { "kind": "SCALAR", "name": "Boolean" } }
+                              ]
+                            },
+                            { "kind": "SCALAR", "name": "Upload" },
+                            { "kind": "SCALAR", "name": "Boolean" }
+                          ]
+                        }
+                      }
+                    }
+                    """), 5L);
+            }
+            return super.postJson(url, headers, body);
+        }
+
+        @Override
+        public GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            if (dataBody != null
+                && dataBody.contains("variables.input.file")
+                && dataBody.contains("variables.input.thumbnail")
+                && dataBody.contains("../../../etc/passwd"))
+            {
+                return response(Map.of("data", Map.of("uploadBundle", Map.of("ok", true))), 5L);
             }
             return super.executeHttp(method, url, headers, jsonBody, formBody, dataBody);
         }

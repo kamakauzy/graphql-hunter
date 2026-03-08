@@ -53,6 +53,7 @@ public final class ConfigurationLoader
         configuration.rateLimitConcurrency = profile.rateLimitConcurrency;
         configuration.rateLimitRequests = profile.rateLimitRequests;
         configuration.maxXssTests = profile.maxXssTests;
+        configuration.maxUploadTestSize = profile.maxUploadTestSize;
         configuration.timeoutSeconds = profile.timeout;
         configuration.delaySeconds = profile.delay;
 

@@ -16,6 +16,7 @@ class ConfigurationLoaderTest
 
         assertTrue(configuration.profiles.containsKey("standard"));
         assertEquals(5, configuration.profiles.get("standard").depthLimit);
+        assertEquals(1024, configuration.profiles.get("standard").maxUploadTestSize);
         assertTrue(configuration.sqlInjection.basic.contains("' OR '1'='1"));
     }
 
