@@ -369,10 +369,22 @@ public final class GraphQLHunterCore
 
         public GraphQLResponse query(String query, Object variables, String operationName)
         {
-            return query(query, variables, operationName, Map.of(), false);
+            return query(query, variables, operationName, Map.of(), false, Set.of());
         }
 
         public GraphQLResponse query(String query, Object variables, String operationName, Map<String, String> extraHeaders, boolean bypassAuth)
+        {
+            return query(query, variables, operationName, extraHeaders, bypassAuth, Set.of());
+        }
+
+        public GraphQLResponse query(
+            String query,
+            Object variables,
+            String operationName,
+            Map<String, String> extraHeaders,
+            boolean bypassAuth,
+            Set<String> suppressedHeaders
+        )
         {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("query", query);
@@ -390,10 +402,10 @@ public final class GraphQLHunterCore
                 {
                     authManager.ensurePrepared(this);
                 }
-                GraphQLResponse response = transport.postJson(url, mergedHeaders(extraHeaders, bypassAuth), payload);
+                GraphQLResponse response = transport.postJson(url, mergedHeaders(extraHeaders, bypassAuth, suppressedHeaders), payload);
                 if (authManager != null && !bypassAuth && authManager.maybeRefreshAndRetry(this, response))
                 {
-                    response = transport.postJson(url, mergedHeaders(extraHeaders, bypassAuth), payload);
+                    response = transport.postJson(url, mergedHeaders(extraHeaders, bypassAuth, suppressedHeaders), payload);
                 }
                 return response;
             }
@@ -418,10 +430,10 @@ public final class GraphQLHunterCore
                 {
                     authManager.ensurePrepared(this);
                 }
-                GraphQLResponse response = transport.postJson(url, mergedHeaders(Map.of(), false), payload);
+                GraphQLResponse response = transport.postJson(url, mergedHeaders(Map.of(), false, Set.of()), payload);
                 if (authManager != null && authManager.maybeRefreshAndRetry(this, response))
                 {
-                    response = transport.postJson(url, mergedHeaders(Map.of(), false), payload);
+                    response = transport.postJson(url, mergedHeaders(Map.of(), false, Set.of()), payload);
                 }
                 return response;
             }
@@ -651,7 +663,7 @@ public final class GraphQLHunterCore
             return flattened;
         }
 
-        private Map<String, String> mergedHeaders(Map<String, String> extraHeaders, boolean bypassAuth)
+        private Map<String, String> mergedHeaders(Map<String, String> extraHeaders, boolean bypassAuth, Set<String> suppressedHeaders)
         {
             LinkedHashMap<String, String> merged = new LinkedHashMap<>(headers);
             if (authManager != null && !bypassAuth)
@@ -661,6 +673,10 @@ public final class GraphQLHunterCore
             if (extraHeaders != null)
             {
                 merged.putAll(extraHeaders);
+            }
+            if (suppressedHeaders != null && !suppressedHeaders.isEmpty())
+            {
+                merged.entrySet().removeIf(entry -> suppressedHeaders.stream().anyMatch(name -> name.equalsIgnoreCase(entry.getKey())));
             }
             return merged;
         }

@@ -158,6 +158,28 @@ class GraphQLHunterCoreTest
         assertTrue(result.analysis.toLowerCase().contains("differ"));
     }
 
+    @Test
+    void querySupportsCaseInsensitiveHeaderSuppression()
+    {
+        HeaderCaptureTransport transport = new HeaderCaptureTransport();
+        GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+            "https://api.example.com/graphql",
+            Map.of(
+                "Origin", "https://api.example.com",
+                "Referer", "https://api.example.com/app",
+                "Content-Type", "application/json"
+            ),
+            transport,
+            null
+        );
+
+        client.query("{ __typename }", null, null, Map.of(), false, java.util.Set.of("origin", "referer"));
+
+        assertFalse(transport.lastHeaders.containsKey("Origin"));
+        assertFalse(transport.lastHeaders.containsKey("Referer"));
+        assertEquals("application/json", transport.lastHeaders.get("Content-Type"));
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> sampleSchema()
     {
@@ -318,6 +340,24 @@ class GraphQLHunterCoreTest
         public GraphQLHunterCore.SessionAwareTransport freshSession()
         {
             return new DifferentDataTransport();
+        }
+    }
+
+    private static final class HeaderCaptureTransport implements GraphQLHunterCore.GraphQLTransport
+    {
+        private Map<String, String> lastHeaders = new LinkedHashMap<>();
+
+        @Override
+        public GraphQLHunterCore.GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            lastHeaders = new LinkedHashMap<>(headers);
+            GraphQLHunterCore.GraphQLResponse response = new GraphQLHunterCore.GraphQLResponse();
+            response.statusCode = 200;
+            response.json = Map.of("data", Map.of("__typename", "Query"));
+            response.body = GraphQLHunterJson.write(response.json);
+            response.headers = new LinkedHashMap<>();
+            response.elapsedMillis = 5L;
+            return response;
         }
     }
 }

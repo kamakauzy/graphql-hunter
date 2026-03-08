@@ -116,7 +116,7 @@ What it does today:
 - runs focused native checks against the imported endpoint:
   - introspection
   - information disclosure
-  - auth exposure differentials
+  - auth exposure differentials and login brute-force protection heuristics
   - batching and large-batch review
   - injection, including query-only time-based and conservative boolean-differential probes in deep-enabled profiles
   - DoS / depth / complexity
@@ -125,7 +125,7 @@ What it does today:
   - XSS reflection review
   - JWT review, including `alg:none` and expired-token acceptance checks
   - concurrent rate limiting
-  - CSRF review, including cross-site origin validation probes
+  - CSRF review, including missing-origin suppression and cross-site origin validation probes
   - file upload surface review
   - mutation review heuristics
 

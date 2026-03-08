@@ -376,7 +376,160 @@ public final class GraphQLHunterScanners
                 }
             }
 
+            findings.addAll(testLoginBruteForceProtection(context));
+
             return findings;
+        }
+
+        private List<Finding> testLoginBruteForceProtection(ScanContext context)
+        {
+            if (context.configuration().safeMode)
+            {
+                return List.of();
+            }
+            Map<String, Object> schema = context.client().introspect();
+            if (schema == null || schema.isEmpty())
+            {
+                return List.of();
+            }
+            List<Map<String, Object>> loginMutations = GraphQLHunterCore.getRootFields(schema, "mutationType").stream()
+                .filter(field ->
+                {
+                    String name = String.valueOf(field.getOrDefault("name", "")).toLowerCase(Locale.ROOT);
+                    return name.contains("login") || name.contains("signin") || name.contains("auth");
+                })
+                .toList();
+            for (Map<String, Object> mutation : loginMutations)
+            {
+                List<Map<String, Object>> args = GraphQLHunterCore.asList(mutation.get("args"));
+                String userArg = findArgName(args, "email", "username", "user");
+                String passwordArg = findArgName(args, "password", "pass");
+                if (userArg == null || passwordArg == null)
+                {
+                    continue;
+                }
+                int attempts = Math.max(1, context.configuration().bruteForceAttempts);
+                Map<Integer, Integer> statusCodes = new LinkedHashMap<>();
+                boolean rateLimited = false;
+                boolean accountLocked = false;
+                boolean captchaRequired = false;
+                int triggerAttempt = 0;
+                for (int index = 0; index < attempts; index++)
+                {
+                    Operation probe = GraphQLHunterCore.buildOperation(
+                        schema,
+                        mutation,
+                        "mutation",
+                        Map.of(
+                            userArg, "test@example.com",
+                            passwordArg, "wrongpass" + index
+                        )
+                    );
+                    if (!probe.testable)
+                    {
+                        return List.of();
+                    }
+                    GraphQLResponse response = context.client().query(probe.query, probe.variables, probe.operationName);
+                    statusCodes.merge(response.statusCode, 1, Integer::sum);
+                    String errors = response.errorsText().toLowerCase(Locale.ROOT);
+                    if (response.statusCode == 429)
+                    {
+                        rateLimited = true;
+                        triggerAttempt = index + 1;
+                        break;
+                    }
+                    if (errors.contains("lock") || errors.contains("block") || errors.contains("suspended"))
+                    {
+                        accountLocked = true;
+                        triggerAttempt = index + 1;
+                        break;
+                    }
+                    if (errors.contains("captcha") || errors.contains("recaptcha"))
+                    {
+                        captchaRequired = true;
+                        triggerAttempt = index + 1;
+                        break;
+                    }
+                }
+
+                if (rateLimited)
+                {
+                    Finding finding = finding(
+                        "Brute-Force Protection: Rate Limiting Detected",
+                        name(),
+                        FindingSeverity.INFO,
+                        FindingStatus.CONFIRMED,
+                        "A login-like mutation returned HTTP 429 after repeated failed attempts.",
+                        "Rate limiting helps reduce the impact of password guessing and credential-stuffing attacks.",
+                        "Keep login throttling enabled and tune thresholds to match expected user behavior."
+                    );
+                    finding.evidence.put("mutation", mutation.get("name"));
+                    finding.evidence.put("rate_limited_after_attempts", triggerAttempt);
+                    finding.evidence.put("total_attempts", attempts);
+                    return List.of(finding);
+                }
+                if (accountLocked)
+                {
+                    Finding finding = finding(
+                        "Brute-Force Protection: Account Lockout Detected",
+                        name(),
+                        FindingSeverity.INFO,
+                        FindingStatus.CONFIRMED,
+                        "A login-like mutation indicated account lockout after repeated failed attempts.",
+                        "Account lockout can slow or stop brute-force attacks against authentication flows.",
+                        "Review lockout duration and abuse resistance to avoid turning it into a denial-of-service vector."
+                    );
+                    finding.evidence.put("mutation", mutation.get("name"));
+                    finding.evidence.put("lockout_after_attempts", triggerAttempt);
+                    return List.of(finding);
+                }
+                if (captchaRequired)
+                {
+                    Finding finding = finding(
+                        "Brute-Force Protection: CAPTCHA Detected",
+                        name(),
+                        FindingSeverity.INFO,
+                        FindingStatus.POTENTIAL,
+                        "A login-like mutation indicated a CAPTCHA challenge after repeated failed attempts.",
+                        "CAPTCHA can reduce automated credential-stuffing when combined with rate limits and monitoring.",
+                        "Verify that CAPTCHA challenges cannot be bypassed and are applied consistently to risky login flows."
+                    );
+                    finding.evidence.put("mutation", mutation.get("name"));
+                    finding.evidence.put("captcha_after_attempts", triggerAttempt);
+                    return List.of(finding);
+                }
+
+                Finding finding = finding(
+                    "Brute-Force Protection Not Detected",
+                    name(),
+                    FindingSeverity.LOW,
+                    FindingStatus.MANUAL_REVIEW,
+                    "A login-like mutation did not show rate limiting, lockout, or CAPTCHA signals during repeated failed attempts.",
+                    "Without brute-force protections, attackers may be able to automate password guessing or credential-stuffing attacks.",
+                    "Review login throttling, account lockout, CAPTCHA, progressive delays, and IP/user-based controls."
+                );
+                finding.evidence.put("mutation", mutation.get("name"));
+                finding.evidence.put("attempts_tested", attempts);
+                finding.evidence.put("status_codes", statusCodes);
+                return List.of(finding);
+            }
+            return List.of();
+        }
+
+        private String findArgName(List<Map<String, Object>> args, String... needles)
+        {
+            for (Map<String, Object> arg : args)
+            {
+                String name = String.valueOf(arg.getOrDefault("name", "")).toLowerCase(Locale.ROOT);
+                for (String needle : needles)
+                {
+                    if (name.contains(needle))
+                    {
+                        return String.valueOf(arg.get("name"));
+                    }
+                }
+            }
+            return null;
         }
     }
 
@@ -1839,7 +1992,14 @@ public final class GraphQLHunterScanners
                 return findings;
             }
 
-            GraphQLResponse missingOrigin = context.client().query(built.query, built.variables, built.operationName, Map.of(), false);
+            GraphQLResponse missingOrigin = context.client().query(
+                built.query,
+                built.variables,
+                built.operationName,
+                Map.of(),
+                false,
+                Set.of("Origin", "Referer")
+            );
             if (missingOrigin.hasData() && !containsCsrfFailure(missingOrigin.errorsText()))
             {
                 Finding finding = finding(

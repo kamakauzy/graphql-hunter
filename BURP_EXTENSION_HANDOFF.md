@@ -206,7 +206,7 @@ These are the most important next tasks.
 - especially worth improving:
   - deeper boolean-differential injection sophistication beyond the current conservative list-count heuristic
   - file upload exploitation depth
-  - CSRF token/cookie handling depth
+  - deeper CSRF token/cookie handling depth beyond the current origin and token-presence checks
   - mutation fuzzer behavior depth
 
 ### Reporting fidelity

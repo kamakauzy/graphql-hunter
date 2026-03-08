@@ -48,6 +48,33 @@ class GraphQLHunterMutationAndProtectionScannersTest
     }
 
     @Test
+    void csrfScannerSuppressesImportedOriginAndRefererForMissingOriginProbe()
+    {
+        GraphQLHunterScanners.ScanContext context = context(
+            Map.of(
+                "Cookie", "sid=abc123",
+                "Origin", "https://api.example.com",
+                "Referer", "https://api.example.com/app"
+            ),
+            new ProtectionTransport()
+        );
+
+        List<Finding> findings = new GraphQLHunterScanners.CsrfScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Missing Origin Header Validation")));
+    }
+
+    @Test
+    void authExposureScannerDetectsLoginRateLimiting()
+    {
+        GraphQLHunterScanners.ScanContext context = context(Map.of(), new LoginProtectionTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.AuthExposureScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Rate Limiting Detected")));
+    }
+
+    @Test
     void fileUploadScannerDetectsUploadSurface()
     {
         GraphQLHunterScanners.ScanContext context = context(Map.of(), new ProtectionTransport());
@@ -127,6 +154,14 @@ class GraphQLHunterMutationAndProtectionScannersTest
                                         { "name": "content", "type": { "kind": "SCALAR", "name": "String" } }
                                       ],
                                       "type": { "kind": "OBJECT", "name": "MutationResponse" }
+                                    },
+                                    {
+                                      "name": "loginUser",
+                                      "args": [
+                                        { "name": "email", "type": { "kind": "SCALAR", "name": "String" } },
+                                        { "name": "password", "type": { "kind": "SCALAR", "name": "String" } }
+                                      ],
+                                      "type": { "kind": "OBJECT", "name": "MutationResponse" }
                                     }
                                   ]
                                 },
@@ -162,6 +197,20 @@ class GraphQLHunterMutationAndProtectionScannersTest
                         """), 5L);
                 }
             }
+            if (body instanceof Map<?, ?> payload)
+            {
+                String query = String.valueOf(payload.get("query"));
+                if (query.startsWith("mutation"))
+                {
+                    String origin = headers.getOrDefault("Origin", headers.getOrDefault("origin", ""));
+                    String referer = headers.getOrDefault("Referer", headers.getOrDefault("referer", ""));
+                    if ("https://api.example.com".equals(origin) || referer.startsWith("https://api.example.com"))
+                    {
+                        return response(Map.of("errors", List.of(Map.of("message", "Origin validated"))), 5L);
+                    }
+                    return response(Map.of("data", Map.of("ok", true)), 5L);
+                }
+            }
             return response(Map.of("data", Map.of("__typename", "Query")), 5L);
         }
 
@@ -177,7 +226,7 @@ class GraphQLHunterMutationAndProtectionScannersTest
             return "sessionid".equals(name) ? "cookie123" : null;
         }
 
-        private GraphQLResponse response(Object body, long elapsedMillis)
+        protected GraphQLResponse response(Object body, long elapsedMillis)
         {
             GraphQLResponse response = new GraphQLResponse();
             response.statusCode = 200;
@@ -223,6 +272,36 @@ class GraphQLHunterMutationAndProtectionScannersTest
                 finally
                 {
                     inflight.decrementAndGet();
+                }
+            }
+            return super.postJson(url, headers, body);
+        }
+    }
+
+    private static final class LoginProtectionTransport extends ProtectionTransport
+    {
+        private final AtomicInteger attempts = new AtomicInteger();
+
+        @Override
+        public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            if (body instanceof Map<?, ?> payload)
+            {
+                String query = String.valueOf(payload.get("query"));
+                if (query.contains("loginUser"))
+                {
+                    int count = attempts.incrementAndGet();
+                    if (count >= 4)
+                    {
+                        GraphQLResponse response = new GraphQLResponse();
+                        response.statusCode = 429;
+                        response.body = GraphQLHunterJson.write(Map.of("errors", List.of(Map.of("message", "Too Many Requests"))));
+                        response.json = Map.of("errors", List.of(Map.of("message", "Too Many Requests")));
+                        response.headers = new LinkedHashMap<>();
+                        response.elapsedMillis = 5L;
+                        return response;
+                    }
+                    return response(Map.of("errors", List.of(Map.of("message", "Invalid credentials"))), 5L);
                 }
             }
             return super.postJson(url, headers, body);
