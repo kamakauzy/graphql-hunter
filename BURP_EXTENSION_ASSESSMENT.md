@@ -4,7 +4,7 @@
 
 This document assesses the complexity and effort required to port GraphQL Hunter functionality into a Burp Suite extension.
 
-> **Status update (March 2026):** the repository now includes a native Burp Suite Professional addon module in `burp-extension/`. The current implementation is an MVP Java 21 + Montoya extension that ships as a `.jar`, adds a Burp tab, imports GraphQL requests from Burp, and runs a focused subset of checks natively. The rest of this document still explains the larger full-parity roadmap and why a complete port remains a substantial effort.
+> **Status update (March 2026):** the repository now includes a native Burp Suite Professional addon module in `burp-extension/`. The implementation has moved beyond the initial MVP and now includes native request import workspaces, auth setup/validation foundations, discovery/reporting foundations, and a materially broader scanner set in Java. The rest of this document still explains why complete CLI-equivalent polish and behavior matching remain substantial engineering work.
 
 ## Complexity Rating: **MEDIUM to HARD** (3-6 months for full feature parity)
 
