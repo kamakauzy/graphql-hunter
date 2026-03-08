@@ -64,6 +64,8 @@ class GraphQLHunterPersistenceTest
         entry.fingerprint = "abc";
         entry.url = "https://api.example.com/graphql";
         entry.query = "{ __typename }";
+        entry.contentType = "multipart/form-data; boundary=----Boundary";
+        entry.rawBody = "------Boundary\r\nContent-Disposition: form-data; name=\"operations\"\r\n\r\n{}";
         entry.lastSeenAt = "2026-03-08T00:00:00Z";
         state.recentRequests.add(entry);
 
@@ -72,6 +74,8 @@ class GraphQLHunterPersistenceTest
 
         assertEquals(1, loaded.recentRequests.size());
         assertEquals("abc", loaded.recentRequests.getFirst().fingerprint);
+        assertEquals("multipart/form-data; boundary=----Boundary", loaded.recentRequests.getFirst().contentType);
+        assertEquals("------Boundary\r\nContent-Disposition: form-data; name=\"operations\"\r\n\r\n{}", loaded.recentRequests.getFirst().rawBody);
     }
 
     private PersistedObject fakeStore()

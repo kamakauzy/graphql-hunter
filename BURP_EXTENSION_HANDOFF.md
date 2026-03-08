@@ -213,7 +213,7 @@ These are the most important next tasks.
 - HTML/JSON export is materially closer to the Python CLI now, including filters, structured redaction, replay snippets, and real executed/skipped/failed scanner metadata
 
 ### UX polish
-- pasted imports now carry auth headers forward, preserve operation names more faithfully, discovery can promote token-only notes into usable headers, runtime-only secrets are exposed in the UI, and recent-request history is available, but the workspace still needs refinement
+- pasted imports now carry auth headers forward, preserve operation names and more request-shape fidelity, discovery can promote token-only notes into usable headers, runtime-only secrets are exposed in the UI, and recent-request history is available, but the workspace still needs refinement
 - no richer GraphQL message editor/view integration yet
 - no richer multi-target/history workflow beyond a bounded recent-request list yet
 

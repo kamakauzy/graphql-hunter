@@ -109,7 +109,7 @@ What it does today:
 - can load auth profiles from an external YAML path instead of only the bundled example config
 - includes Burp-side workspaces for:
   - request editing, including operation-name preservation
-  - recent GraphQL request history captured from Burp traffic
+  - recent GraphQL request history captured from Burp traffic, including preserved batch/multipart request fidelity
   - auth setup and validation
   - pasted import parsing with content-based auto-detect for JSON/Postman/YAML plus better batch/multipart carry-forward
   - discovery analysis and application

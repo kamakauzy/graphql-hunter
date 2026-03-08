@@ -79,8 +79,10 @@ public final class GraphQLHunterModels
         public String url = "";
         public String method = "POST";
         public String operationName = "";
+        public String contentType = "application/json";
         public String query = "";
         public Object variables = new LinkedHashMap<String, Object>();
+        public String rawBody = "";
         public Map<String, String> headers = new LinkedHashMap<>();
         public boolean batch;
         public String firstSeenAt = "";
@@ -95,8 +97,10 @@ public final class GraphQLHunterModels
             copy.url = url;
             copy.method = method;
             copy.operationName = operationName;
+            copy.contentType = contentType;
             copy.query = query;
             copy.variables = deepCopyObject(variables);
+            copy.rawBody = rawBody;
             copy.headers = new LinkedHashMap<>(headers);
             copy.batch = batch;
             copy.firstSeenAt = firstSeenAt;
@@ -114,6 +118,8 @@ public final class GraphQLHunterModels
             request.query = query;
             request.variables = deepCopyObject(variables);
             request.operationName = operationName;
+            request.contentType = contentType;
+            request.rawBody = rawBody;
             request.batch = batch;
             request.headers = new LinkedHashMap<>(headers);
             return request;
@@ -127,8 +133,10 @@ public final class GraphQLHunterModels
             entry.url = request.url;
             entry.method = request.method;
             entry.operationName = request.operationName;
+            entry.contentType = request.contentType;
             entry.query = request.query;
             entry.variables = deepCopyObject(request.variables);
+            entry.rawBody = request.rawBody;
             entry.headers = new LinkedHashMap<>(request.headers);
             entry.batch = request.batch;
             entry.firstSeenAt = timestamp;
@@ -325,9 +333,11 @@ public final class GraphQLHunterModels
         String input = normalizeMethod(request.method) + "\n"
             + normalizeUrl(request.url) + "\n"
             + (request.batch ? "1" : "0") + "\n"
+            + normalizeText(request.contentType) + "\n"
             + normalizeText(request.operationName) + "\n"
             + normalizeQuery(request.query) + "\n"
-            + canonicalVariables(request.variables);
+            + canonicalVariables(request.variables) + "\n"
+            + normalizeQuery(request.rawBody);
         try
         {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
