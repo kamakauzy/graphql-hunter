@@ -77,11 +77,21 @@ class GraphQLHunterMutationAndProtectionScannersTest
     @Test
     void fileUploadScannerDetectsUploadSurface()
     {
-        GraphQLHunterScanners.ScanContext context = context(Map.of(), new ProtectionTransport());
+        GraphQLHunterScanners.ScanContext context = context(Map.of(), new RejectingUploadTransport());
 
         List<Finding> findings = new GraphQLHunterScanners.FileUploadScanner().scan(context);
 
         assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("File Upload Mutation Detected")));
+    }
+
+    @Test
+    void fileUploadScannerPromotesAcceptedStringTraversalProbe()
+    {
+        GraphQLHunterScanners.ScanContext context = context(Map.of(), new ProtectionTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.FileUploadScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Path Traversal")));
     }
 
     private GraphQLHunterScanners.ScanContext context(Map<String, String> headers, GraphQLHunterCore.SessionAwareTransport transport)
@@ -302,6 +312,30 @@ class GraphQLHunterMutationAndProtectionScannersTest
                         return response;
                     }
                     return response(Map.of("errors", List.of(Map.of("message", "Invalid credentials"))), 5L);
+                }
+            }
+            return super.postJson(url, headers, body);
+        }
+    }
+
+    private static final class RejectingUploadTransport extends ProtectionTransport
+    {
+        @Override
+        public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            if (body instanceof Map<?, ?> payload)
+            {
+                String query = String.valueOf(payload.get("query"));
+                if (query.contains("uploadPaste"))
+                {
+                    Object variables = payload.get("variables");
+                    String filename = variables instanceof Map<?, ?> valueMap ? String.valueOf(valueMap.get("filename")) : "";
+                    if (filename.contains("..") || filename.endsWith(".php") || filename.endsWith(".jsp")
+                        || filename.endsWith(".aspx") || filename.contains("%00") || filename.contains("\u0000")
+                        || filename.contains("\n") || filename.contains("\r"))
+                    {
+                        return response(Map.of("errors", List.of(Map.of("message", "Filename rejected"))), 5L);
+                    }
                 }
             }
             return super.postJson(url, headers, body);

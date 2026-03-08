@@ -2133,6 +2133,22 @@ public final class GraphQLHunterScanners
 
     public static final class FileUploadScanner implements ScannerCheck
     {
+        private static final List<String> PATH_TRAVERSAL_PAYLOADS = List.of(
+            "../../../etc/passwd",
+            "..\\..\\..\\windows\\system32\\config\\sam",
+            "....//....//....//etc/passwd"
+        );
+        private static final List<String> DANGEROUS_EXTENSIONS = List.of(
+            "payload.php",
+            "payload.jsp",
+            "payload.aspx"
+        );
+        private static final List<String> SUSPICIOUS_FILENAMES = List.of(
+            "file.txt%00.jpg",
+            "file.txt\u0000.jpg",
+            "file.txt\n\r"
+        );
+
         @Override
         public String name()
         {
@@ -2161,6 +2177,16 @@ public final class GraphQLHunterScanners
                     && (argByName.containsKey("content") || argByName.containsKey("text") || argByName.containsKey("data") || argByName.containsKey("body"))
                     && mutationName.toLowerCase(Locale.ROOT).matches(".*(upload|import|file|paste).*");
 
+                if (stringUploadSurface)
+                {
+                    Finding liveFinding = probeStringUploadSurface(context, schema, mutation, argByName);
+                    if (liveFinding != null)
+                    {
+                        findings.add(liveFinding);
+                        continue;
+                    }
+                }
+
                 if (uploadScalar || stringUploadSurface)
                 {
                     Finding finding = finding(
@@ -2179,6 +2205,126 @@ public final class GraphQLHunterScanners
                 }
             }
             return findings;
+        }
+
+        private Finding probeStringUploadSurface(
+            ScanContext context,
+            Map<String, Object> schema,
+            Map<String, Object> mutation,
+            Map<String, Map<String, Object>> argByName
+        )
+        {
+            String filenameArg = pickArgName(argByName, "filename", "file", "path");
+            String contentArg = pickArgName(argByName, "content", "text", "data", "body");
+            if (filenameArg == null || contentArg == null)
+            {
+                return null;
+            }
+            String mutationName = String.valueOf(mutation.getOrDefault("name", ""));
+
+            Finding traversal = probeUploadPayload(
+                context, schema, mutation, mutationName, filenameArg, contentArg,
+                PATH_TRAVERSAL_PAYLOADS,
+                "Potential Path Traversal in File Upload",
+                FindingSeverity.HIGH,
+                "Upload-like mutation accepted a dangerous traversal-style filename payload.",
+                "If upload paths are not normalized and constrained, attackers may write files outside the intended directory tree.",
+                "Normalize and validate filenames, reject traversal sequences and separators, and generate server-side filenames."
+            );
+            if (traversal != null)
+            {
+                return traversal;
+            }
+
+            Finding extension = probeUploadPayload(
+                context, schema, mutation, mutationName, filenameArg, contentArg,
+                DANGEROUS_EXTENSIONS,
+                "Potential Dangerous File Type Upload",
+                FindingSeverity.MEDIUM,
+                "Upload-like mutation accepted a potentially dangerous file extension.",
+                "If uploaded files are later served or executed, dangerous file types can enable server-side compromise or stored client-side attacks.",
+                "Use an allowlist of permitted file types, validate MIME/magic bytes, and store uploads outside executable or public directories."
+            );
+            if (extension != null)
+            {
+                return extension;
+            }
+
+            return probeUploadPayload(
+                context, schema, mutation, mutationName, filenameArg, contentArg,
+                SUSPICIOUS_FILENAMES,
+                "Potential Filename Injection Vulnerability",
+                FindingSeverity.LOW,
+                "Upload-like mutation accepted a suspicious filename payload without rejecting it.",
+                "Unsanitized filenames can enable downstream parser confusion, path traversal, or command injection depending on how filenames are processed.",
+                "Whitelist safe filename characters, strip control characters, and never pass user-provided filenames directly to shell commands or unsafe sinks."
+            );
+        }
+
+        private Finding probeUploadPayload(
+            ScanContext context,
+            Map<String, Object> schema,
+            Map<String, Object> mutation,
+            String mutationName,
+            String filenameArg,
+            String contentArg,
+            List<String> payloads,
+            String title,
+            FindingSeverity severity,
+            String description,
+            String impact,
+            String remediation
+        )
+        {
+            for (String payload : payloads)
+            {
+                Operation probe = GraphQLHunterCore.buildOperation(
+                    schema,
+                    mutation,
+                    "mutation",
+                    Map.of(
+                        filenameArg, payload,
+                        contentArg, "upload-test"
+                    )
+                );
+                if (!probe.testable)
+                {
+                    continue;
+                }
+                GraphQLResponse response = context.client().query(probe.query, probe.variables, probe.operationName);
+                if (response.hasData() && response.errorsText().isBlank())
+                {
+                    Finding finding = finding(
+                        title,
+                        name(),
+                        severity,
+                        FindingStatus.POTENTIAL,
+                        description,
+                        impact,
+                        remediation
+                    );
+                    finding.proof = probe.query;
+                    finding.requestSnippet = probe.query;
+                    finding.evidence.put("mutation", mutationName);
+                    finding.evidence.put("filename_argument", filenameArg);
+                    finding.evidence.put("payload", payload);
+                    findingsAddContext(finding, response);
+                    return finding;
+                }
+            }
+            return null;
+        }
+
+        private String pickArgName(Map<String, Map<String, Object>> argByName, String... candidates)
+        {
+            for (String candidate : candidates)
+            {
+                if (argByName.containsKey(candidate))
+                {
+                    return String.valueOf(argByName.get(candidate).get("name"));
+                }
+            }
+            return null;
         }
     }
 
