@@ -54,11 +54,11 @@ public final class AuthManager
         AuthProfileDefinition definition = AuthConfigurationLoader.configuration().profiles.get(settings.profileName);
         if (definition == null)
         {
-            if (logger != null)
-            {
-                logger.warn("Auth profile not found: " + settings.profileName);
-            }
-            return null;
+            throw new IllegalStateException("Auth profile not found: " + settings.profileName);
+        }
+        if (definition.type == null || definition.type.isBlank())
+        {
+            throw new IllegalStateException("Auth profile missing type: " + settings.profileName);
         }
 
         return switch (definition.type)
@@ -75,13 +75,7 @@ public final class AuthManager
             case "oauth2_client_credentials", "oauth2_refresh_token", "oauth2_auth_code", "oauth2_device_code" -> new OAuth2Provider(definition, mergedVariables(settings));
             case "scripted" -> new ScriptedProvider(definition, mergedVariables(settings));
             case "cookie_session" -> new CookieSessionProvider(definition, mergedVariables(settings));
-            default -> {
-                if (logger != null)
-                {
-                    logger.warn("Auth profile type is not implemented yet in Burp parity foundation: " + definition.type);
-                }
-                yield null;
-            }
+            default -> throw new IllegalStateException("Unsupported auth profile type: " + definition.type);
         };
     }
 

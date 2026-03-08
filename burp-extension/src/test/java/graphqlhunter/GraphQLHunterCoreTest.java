@@ -98,6 +98,66 @@ class GraphQLHunterCoreTest
         assertEquals(401, result.statusWithoutAuth);
     }
 
+    @Test
+    void validateAuthUsesIsolatedAnonymousClient()
+    {
+        AuthSettings settings = new AuthSettings();
+        settings.mode = "imported_headers";
+        settings.importedAuthHeaders.put("Authorization", "Bearer secret");
+        GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+            "https://api.example.com/graphql",
+            Map.of(),
+            new SessionBleedTransport(false),
+            null,
+            AuthManager.fromState(settings, null)
+        );
+
+        GraphQLHunterCore.AuthValidationResult result = client.validateAuth("{ viewer { id } }", null);
+
+        assertTrue(result.authWorking);
+        assertTrue(result.authRequired);
+        assertEquals(200, result.statusWithAuth);
+        assertEquals(401, result.statusWithoutAuth);
+    }
+
+    @Test
+    void validateAuthTreatsIdenticalPermissionErrorsAsAmbiguousAuthChecked()
+    {
+        GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+            "https://api.example.com/graphql",
+            Map.of(),
+            new PermissionErrorTransport(),
+            null
+        );
+
+        GraphQLHunterCore.AuthValidationResult result = client.validateAuth("{ viewer { id } }", null);
+
+        assertTrue(result.authWorking);
+        assertTrue(result.authRequired);
+        assertTrue(result.analysis.toLowerCase().contains("permission"));
+    }
+
+    @Test
+    void validateAuthTreatsDifferentDataAsAuthWorking()
+    {
+        AuthSettings settings = new AuthSettings();
+        settings.mode = "imported_headers";
+        settings.importedAuthHeaders.put("Authorization", "Bearer secret");
+        GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+            "https://api.example.com/graphql",
+            Map.of(),
+            new DifferentDataTransport(),
+            null,
+            AuthManager.fromState(settings, null)
+        );
+
+        GraphQLHunterCore.AuthValidationResult result = client.validateAuth("{ viewer { id } }", null);
+
+        assertTrue(result.authWorking);
+        assertTrue(result.authRequired);
+        assertTrue(result.analysis.toLowerCase().contains("differ"));
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> sampleSchema()
     {
@@ -161,6 +221,103 @@ class GraphQLHunterCoreTest
         public String getCookie(String name)
         {
             return null;
+        }
+    }
+
+    private static final class SessionBleedTransport implements GraphQLHunterCore.SessionAwareTransport
+    {
+        private boolean authenticatedSession;
+
+        private SessionBleedTransport(boolean authenticatedSession)
+        {
+            this.authenticatedSession = authenticatedSession;
+        }
+
+        @Override
+        public GraphQLHunterCore.GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            boolean authorized = headers.containsKey("Authorization");
+            if (authorized)
+            {
+                authenticatedSession = true;
+            }
+            GraphQLHunterCore.GraphQLResponse response = new GraphQLHunterCore.GraphQLResponse();
+            boolean effectiveAuth = authorized || authenticatedSession;
+            response.statusCode = effectiveAuth ? 200 : 401;
+            response.json = effectiveAuth ? Map.of("data", Map.of("viewer", Map.of("id", "123"))) : Map.of("errors", List.of(Map.of("message", "Unauthorized")));
+            response.body = GraphQLHunterJson.write(response.json);
+            response.headers = new LinkedHashMap<>();
+            response.elapsedMillis = 5L;
+            return response;
+        }
+
+        @Override
+        public GraphQLHunterCore.GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            return postJson(url, headers, jsonBody);
+        }
+
+        @Override
+        public String getCookie(String name)
+        {
+            return authenticatedSession ? "cookie123" : null;
+        }
+
+        @Override
+        public GraphQLHunterCore.SessionAwareTransport freshSession()
+        {
+            return new SessionBleedTransport(false);
+        }
+    }
+
+    private static final class PermissionErrorTransport implements GraphQLHunterCore.GraphQLTransport
+    {
+        @Override
+        public GraphQLHunterCore.GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            GraphQLHunterCore.GraphQLResponse response = new GraphQLHunterCore.GraphQLResponse();
+            response.statusCode = 200;
+            response.json = Map.of("errors", List.of(Map.of("message", "Permission denied for this resource")));
+            response.body = GraphQLHunterJson.write(response.json);
+            response.headers = new LinkedHashMap<>();
+            response.elapsedMillis = 5L;
+            return response;
+        }
+    }
+
+    private static final class DifferentDataTransport implements GraphQLHunterCore.SessionAwareTransport
+    {
+        @Override
+        public GraphQLHunterCore.GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            boolean authorized = headers.containsKey("Authorization");
+            GraphQLHunterCore.GraphQLResponse response = new GraphQLHunterCore.GraphQLResponse();
+            response.statusCode = 200;
+            response.json = authorized
+                ? Map.of("data", Map.of("viewer", Map.of("id", "123", "role", "admin")))
+                : Map.of("data", Map.of("viewer", Map.of("id", "123", "role", "guest")));
+            response.body = GraphQLHunterJson.write(response.json);
+            response.headers = new LinkedHashMap<>();
+            response.elapsedMillis = 5L;
+            return response;
+        }
+
+        @Override
+        public GraphQLHunterCore.GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            return postJson(url, headers, jsonBody);
+        }
+
+        @Override
+        public String getCookie(String name)
+        {
+            return null;
+        }
+
+        @Override
+        public GraphQLHunterCore.SessionAwareTransport freshSession()
+        {
+            return new DifferentDataTransport();
         }
     }
 }

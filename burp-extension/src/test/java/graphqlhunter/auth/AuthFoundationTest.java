@@ -64,6 +64,40 @@ class AuthFoundationTest
     }
 
     @Test
+    void missingProfileFailsFastInsteadOfDowngradingToNoAuth()
+    {
+        GraphQLHunterModels.AuthSettings settings = new GraphQLHunterModels.AuthSettings();
+        settings.mode = "profile";
+        settings.profileName = "does_not_exist";
+
+        assertThrows(IllegalStateException.class, () -> AuthManager.fromState(settings, null));
+    }
+
+    @Test
+    void unsupportedProfileTypeFailsFast()
+    {
+        AuthProfileDefinition definition = new AuthProfileDefinition();
+        definition.type = "unsupported_type";
+        AuthConfigurationLoader.configuration().profiles.put("unsupported_profile", definition);
+        GraphQLHunterModels.AuthSettings settings = new GraphQLHunterModels.AuthSettings();
+        settings.mode = "profile";
+        settings.profileName = "unsupported_profile";
+
+        assertThrows(IllegalStateException.class, () -> AuthManager.fromState(settings, null));
+    }
+
+    @Test
+    void authFailureDetectionMatchesBroaderKeywordSet()
+    {
+        GraphQLHunterCore.GraphQLResponse response = new GraphQLHunterCore.GraphQLResponse();
+        response.statusCode = 200;
+        response.json = Map.of("errors", List.of(Map.of("message", "Access denied: token expired")));
+        response.body = graphqlhunter.GraphQLHunterJson.write(response.json);
+
+        assertTrue(new BearerTokenProvider("Authorization", "Bearer", "tok").isAuthFailure(response));
+    }
+
+    @Test
     void redactorMasksSensitiveHeaders()
     {
         AuthRedactor redactor = new AuthRedactor();

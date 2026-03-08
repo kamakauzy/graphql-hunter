@@ -15,17 +15,7 @@ public interface AuthProvider
 
     default boolean isAuthFailure(GraphQLHunterCore.GraphQLResponse response)
     {
-        int statusCode = response.statusCode;
-        if (statusCode == 401 || statusCode == 403)
-        {
-            return true;
-        }
-        String errors = response.errorsText().toLowerCase();
-        return errors.contains("unauthorized")
-            || errors.contains("forbidden")
-            || errors.contains("unauthenticated")
-            || errors.contains("invalid token")
-            || errors.contains("csrf");
+        return looksLikeAuthFailure(response.statusCode, response.errorsText());
     }
 
     default boolean canRefresh()
@@ -41,5 +31,31 @@ public interface AuthProvider
     default Set<String> sensitiveHeaderNames()
     {
         return Set.of();
+    }
+
+    static boolean looksLikeAuthFailure(int statusCode, String text)
+    {
+        if (statusCode == 401 || statusCode == 403)
+        {
+            return true;
+        }
+        String lowered = text == null ? "" : text.toLowerCase();
+        return lowered.contains("unauthorized")
+            || lowered.contains("forbidden")
+            || lowered.contains("unauthenticated")
+            || lowered.contains("not authenticated")
+            || lowered.contains("authentication")
+            || lowered.contains("invalid token")
+            || lowered.contains("missing token")
+            || lowered.contains("token expired")
+            || lowered.contains("access denied")
+            || lowered.contains("jwt")
+            || lowered.contains("csrf");
+    }
+
+    static boolean looksLikePermissionFailure(String text)
+    {
+        String lowered = text == null ? "" : text.toLowerCase();
+        return lowered.contains("permission") || lowered.contains("authorization");
     }
 }

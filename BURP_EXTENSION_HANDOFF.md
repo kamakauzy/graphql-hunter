@@ -199,7 +199,7 @@ These are the most important next tasks.
 - multipart upload execution parity is still incomplete
 - replay generation is much closer to the Python CLI now, but multipart and batch-specific edge cases still need work
 - proxy-specific parity is not fully addressed
-- some deeper auth retry/refresh semantics and external auth-config ergonomics remain lighter than Python
+- some deeper auth retry/refresh semantics and external auth-config ergonomics remain lighter than Python, though auth validation now uses an isolated anonymous baseline instead of sharing the authenticated session
 
 ### Scanner fidelity
 - some Java scanners are present but still lighter than the Python versions

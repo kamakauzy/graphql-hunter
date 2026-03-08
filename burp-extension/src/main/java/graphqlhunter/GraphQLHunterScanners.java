@@ -12,6 +12,7 @@ import graphqlhunter.GraphQLHunterModels.FindingSeverity;
 import graphqlhunter.GraphQLHunterModels.FindingStatus;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
 import graphqlhunter.auth.AuthManager;
+import graphqlhunter.auth.AuthProvider;
 import graphqlhunter.config.ConfigurationLoader;
 import graphqlhunter.config.PayloadConfiguration;
 import graphqlhunter.config.ScanConfiguration;
@@ -1952,8 +1953,7 @@ public final class GraphQLHunterScanners
 
     private static boolean containsAuthFailure(String text)
     {
-        String lowered = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        return lowered.contains("unauthorized") || lowered.contains("forbidden") || lowered.contains("authentication");
+        return AuthProvider.looksLikeAuthFailure(0, text);
     }
 
     private static boolean containsCsrfFailure(String text)

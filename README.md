@@ -105,6 +105,7 @@ What it does today:
 - imports GraphQL requests from Burp via the context menu
 - carries imported auth headers into the Burp auth workspace automatically
 - supports runtime-only auth secrets that are not persisted with Burp extension state
+- validates auth against an isolated anonymous baseline instead of reusing the authenticated Burp session
 - includes Burp-side workspaces for:
   - request editing
   - auth setup and validation

@@ -2,6 +2,7 @@ package graphqlhunter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import graphqlhunter.auth.AuthManager;
+import graphqlhunter.auth.AuthProvider;
 import graphqlhunter.auth.flow.FlowRunner;
 
 import java.io.IOException;
@@ -127,6 +128,11 @@ public final class GraphQLHunterCore
         ) throws IOException, InterruptedException;
 
         String getCookie(String name);
+
+        default SessionAwareTransport freshSession()
+        {
+            return this;
+        }
     }
 
     public static final class JavaHttpTransport implements SessionAwareTransport
@@ -245,6 +251,12 @@ public final class GraphQLHunterCore
             }
             return null;
         }
+
+        @Override
+        public SessionAwareTransport freshSession()
+        {
+            return new JavaHttpTransport(timeoutSeconds, delaySeconds);
+        }
     }
 
     public static final class GraphQLResponse
@@ -342,12 +354,17 @@ public final class GraphQLHunterCore
             Map<String, String> cloned = new LinkedHashMap<>();
             headers.forEach((key, value) ->
             {
-                if (!AUTH_HEADERS.contains(key.toLowerCase(Locale.ROOT)))
+                if (key != null && ("content-type".equalsIgnoreCase(key) || "accept".equalsIgnoreCase(key)))
                 {
                     cloned.put(key, value);
                 }
             });
-            return new GraphQLClient(url, cloned, transport, logger, null);
+            GraphQLTransport anonymousTransport = transport;
+            if (transport instanceof SessionAwareTransport sessionAwareTransport)
+            {
+                anonymousTransport = sessionAwareTransport.freshSession();
+            }
+            return new GraphQLClient(url, cloned, anonymousTransport, logger, null);
         }
 
         public GraphQLResponse query(String query, Object variables, String operationName)
@@ -465,6 +482,8 @@ public final class GraphQLHunterCore
 
             String withErrors = withAuth.errorsText().toLowerCase(Locale.ROOT);
             String withoutErrors = withoutAuth.errorsText().toLowerCase(Locale.ROOT);
+            boolean withAuthFailure = AuthProvider.looksLikeAuthFailure(validation.statusWithAuth, withErrors);
+            boolean withoutAuthFailure = AuthProvider.looksLikeAuthFailure(validation.statusWithoutAuth, withoutErrors);
 
             if ((validation.statusWithoutAuth == 401 || validation.statusWithoutAuth == 403) && validation.statusWithAuth == 200)
             {
@@ -474,8 +493,7 @@ public final class GraphQLHunterCore
                 return validation;
             }
 
-            if ((withoutErrors.contains("unauthorized") || withoutErrors.contains("forbidden") || withoutErrors.contains("authentication"))
-                && !(withErrors.contains("unauthorized") || withErrors.contains("forbidden") || withErrors.contains("authentication")))
+            if (withoutAuthFailure && !withAuthFailure)
             {
                 validation.authWorking = true;
                 validation.authRequired = true;
@@ -483,11 +501,70 @@ public final class GraphQLHunterCore
                 return validation;
             }
 
-            if (validation.statusWithAuth == validation.statusWithoutAuth && String.valueOf(withAuth.json).equals(String.valueOf(withoutAuth.json)))
+            if (validation.statusWithAuth == validation.statusWithoutAuth && withErrors.equals(withoutErrors))
             {
-                validation.authWorking = false;
-                validation.authRequired = false;
-                validation.analysis = "Authentication may not be required: responses matched with and without auth.";
+                if (AuthProvider.looksLikePermissionFailure(withErrors))
+                {
+                    validation.authWorking = true;
+                    validation.authRequired = true;
+                    validation.analysis = "Authentication appears to be working: permission errors indicate the server is checking authorization, but the token may still be invalid or not required for this path.";
+                }
+                else if (String.valueOf(withAuth.json).equals(String.valueOf(withoutAuth.json)))
+                {
+                    validation.authWorking = false;
+                    validation.authRequired = false;
+                    validation.analysis = "Authentication may not be required: responses matched with and without auth.";
+                }
+                else
+                {
+                    validation.authWorking = true;
+                    validation.authRequired = true;
+                    validation.analysis = "Authentication appears to be working: responses differ with and without auth despite matching status codes.";
+                }
+                return validation;
+            }
+
+            if (validation.statusWithAuth == 200 && validation.statusWithoutAuth == 200)
+            {
+                Object withData = withAuth.bodyMap().get("data");
+                Object withoutData = withoutAuth.bodyMap().get("data");
+                if (withData != null && withoutData != null)
+                {
+                    if (!String.valueOf(withData).equals(String.valueOf(withoutData)))
+                    {
+                        validation.authWorking = true;
+                        validation.authRequired = true;
+                        validation.analysis = "Authentication is working: different data was returned with versus without auth.";
+                    }
+                    else
+                    {
+                        validation.authWorking = false;
+                        validation.authRequired = false;
+                        validation.analysis = "Authentication may not be required: identical data was returned with and without auth.";
+                    }
+                    return validation;
+                }
+                if (withErrors.equals(withoutErrors))
+                {
+                    if (AuthProvider.looksLikePermissionFailure(withErrors))
+                    {
+                        validation.authWorking = true;
+                        validation.authRequired = true;
+                        validation.analysis = "Authentication appears to be working: matching permission errors indicate auth is being checked.";
+                    }
+                    else
+                    {
+                        validation.authWorking = false;
+                        validation.authRequired = false;
+                        validation.analysis = "Authentication may not be required: matching errors were returned with and without auth.";
+                    }
+                }
+                else
+                {
+                    validation.authWorking = true;
+                    validation.authRequired = true;
+                    validation.analysis = "Authentication appears to be working: different error responses were returned with and without auth.";
+                }
                 return validation;
             }
 
@@ -499,7 +576,7 @@ public final class GraphQLHunterCore
                 return validation;
             }
 
-            validation.analysis = "Auth validation was inconclusive. Review the response details manually.";
+            validation.analysis = "Unable to determine auth status. Review the response details manually.";
             return validation;
         }
 
