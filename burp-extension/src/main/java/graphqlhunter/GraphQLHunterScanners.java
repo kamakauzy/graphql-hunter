@@ -98,6 +98,22 @@ public final class GraphQLHunterScanners
         {
             checks.add(new JwtScanner());
         }
+        if (configuration.enableRateLimitTesting && isEnabled(configuration, "rate_limit"))
+        {
+            checks.add(new RateLimitingScanner());
+        }
+        if (configuration.enableCsrfTesting && isEnabled(configuration, "csrf"))
+        {
+            checks.add(new CsrfScanner());
+        }
+        if (configuration.enableFileUploadTesting && isEnabled(configuration, "file_upload"))
+        {
+            checks.add(new FileUploadScanner());
+        }
+        if (isEnabled(configuration, "mutation_fuzzing"))
+        {
+            checks.add(new MutationFuzzerScanner());
+        }
 
         List<Finding> findings = new ArrayList<>();
         for (ScannerCheck check : checks)
@@ -1135,6 +1151,528 @@ public final class GraphQLHunterScanners
         {
             int padding = (4 - value.length() % 4) % 4;
             return value + "=".repeat(padding);
+        }
+    }
+
+    public static final class RateLimitingScanner implements ScannerCheck
+    {
+        @Override
+        public String name()
+        {
+            return "rate_limiting";
+        }
+
+        @Override
+        public List<Finding> scan(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            findings.addAll(testConcurrentRequests(context));
+            findings.addAll(testRateLimitHeaders(context));
+            findings.addAll(testMutationRateLimits(context));
+            return findings;
+        }
+
+        private List<Finding> testConcurrentRequests(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            int total = Math.max(1, context.configuration().rateLimitRequests);
+            int rateLimited = 0;
+            int errors = 0;
+            Map<Integer, Integer> statusCodes = new LinkedHashMap<>();
+            for (int index = 0; index < total; index++)
+            {
+                GraphQLResponse response = context.client().query("{ __typename }", null, null);
+                statusCodes.merge(response.statusCode, 1, Integer::sum);
+                if (response.statusCode == 429)
+                {
+                    rateLimited++;
+                }
+                else if (response.statusCode == 0)
+                {
+                    errors++;
+                }
+            }
+
+            if (rateLimited > 0)
+            {
+                Finding finding = finding(
+                    "Rate Limiting Detected",
+                    name(),
+                    FindingSeverity.INFO,
+                    FindingStatus.CONFIRMED,
+                    "The endpoint returned HTTP 429 during a burst test, indicating rate limiting is present.",
+                    "Rate limiting helps protect against abuse and burst-driven DoS attacks.",
+                    "No action needed. Ensure thresholds match operational expectations."
+                );
+                finding.evidence.put("rate_limited_requests", rateLimited);
+                finding.evidence.put("total_requests", total);
+                finding.evidence.put("status_codes", statusCodes);
+                findings.add(finding);
+            }
+            else if (errors > total / 2)
+            {
+                Finding finding = finding(
+                    "Possible Rate Limiting or DoS Protection",
+                    name(),
+                    FindingSeverity.INFO,
+                    FindingStatus.POTENTIAL,
+                    "The endpoint produced a high error rate during a burst test, which may indicate throttling or protective controls.",
+                    "High error rates under burst traffic can be a sign of rate limiting or defensive degradation behavior.",
+                    "Review server-side throttling configuration and validate intended burst behavior manually."
+                );
+                finding.evidence.put("error_count", errors);
+                finding.evidence.put("total_requests", total);
+                findings.add(finding);
+            }
+            else
+            {
+                Finding finding = finding(
+                    "No Rate Limiting Detected",
+                    name(),
+                    FindingSeverity.MEDIUM,
+                    FindingStatus.POTENTIAL,
+                    "A burst test completed without HTTP 429 responses or clear throttling signals.",
+                    "Without rate limiting, attackers may be able to flood the GraphQL endpoint or automate password guessing and resource abuse.",
+                    "Implement per-IP, per-user, and/or per-operation throttling as appropriate."
+                );
+                finding.evidence.put("total_requests", total);
+                finding.evidence.put("status_codes", statusCodes);
+                findings.add(finding);
+            }
+            return findings;
+        }
+
+        private List<Finding> testRateLimitHeaders(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            GraphQLResponse response = context.client().query("{ __typename }", null, null);
+            Map<String, List<String>> matching = new LinkedHashMap<>();
+            response.headers.forEach((key, value) ->
+            {
+                if (key != null)
+                {
+                    String lowered = key.toLowerCase(Locale.ROOT);
+                    if (lowered.startsWith("x-ratelimit") || lowered.equals("ratelimit-limit") || lowered.equals("ratelimit-remaining") || lowered.equals("retry-after"))
+                    {
+                        matching.put(key, value);
+                    }
+                }
+            });
+            if (!matching.isEmpty())
+            {
+                Finding finding = finding(
+                    "Rate Limit Headers Present",
+                    name(),
+                    FindingSeverity.INFO,
+                    FindingStatus.CONFIRMED,
+                    "The endpoint exposes explicit rate-limit metadata in HTTP headers.",
+                    "Visible rate-limit headers help clients back off and confirm throttling controls are in place.",
+                    "No action needed. Ensure the exposed metadata matches the true enforcement policy."
+                );
+                finding.evidence.put("rate_limit_headers", matching);
+                findings.add(finding);
+            }
+            return findings;
+        }
+
+        private List<Finding> testMutationRateLimits(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            Map<String, Object> schema = context.client().introspect();
+            if (schema == null || schema.isEmpty())
+            {
+                return findings;
+            }
+            List<Map<String, Object>> mutations = GraphQLHunterCore.getRootFields(schema, "mutationType");
+            if (mutations.isEmpty())
+            {
+                return findings;
+            }
+            Operation built = GraphQLHunterCore.buildOperation(schema, mutations.getFirst(), "mutation", Map.of());
+            if (!built.testable)
+            {
+                return findings;
+            }
+            int burst = Math.max(1, Math.min(50, context.configuration().rateLimitRequests / 2));
+            boolean rateLimited = false;
+            for (int index = 0; index < burst; index++)
+            {
+                GraphQLResponse response = context.client().query(built.query, built.variables, built.operationName);
+                if (response.statusCode == 429)
+                {
+                    rateLimited = true;
+                    break;
+                }
+            }
+            if (rateLimited)
+            {
+                Finding finding = finding(
+                    "Mutation Rate Limiting Detected",
+                    name(),
+                    FindingSeverity.INFO,
+                    FindingStatus.CONFIRMED,
+                    "A mutation burst triggered HTTP 429, suggesting operation-specific throttling is in place.",
+                    "Mutation-specific throttling helps reduce abuse against state-changing operations.",
+                    "No action needed. Ensure thresholds fit real usage."
+                );
+                finding.evidence.put("burst_requests", burst);
+                findings.add(finding);
+            }
+            else
+            {
+                Finding finding = finding(
+                    "Mutation Rate Limiting Not Detected",
+                    name(),
+                    FindingSeverity.LOW,
+                    FindingStatus.MANUAL_REVIEW,
+                    "A mutation burst did not trigger explicit throttling in the current test.",
+                    "Mutations often deserve stricter rate limiting than read-only queries because they change server-side state.",
+                    "Review whether state-changing operations have dedicated rate limits."
+                );
+                finding.evidence.put("burst_requests", burst);
+                finding.proof = built.query;
+                finding.requestSnippet = built.query;
+                findings.add(finding);
+            }
+            return findings;
+        }
+    }
+
+    public static final class CsrfScanner implements ScannerCheck
+    {
+        @Override
+        public String name()
+        {
+            return "csrf";
+        }
+
+        @Override
+        public List<Finding> scan(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            boolean hasCookieAuth = context.request().headers.keySet().stream().anyMatch(key -> "Cookie".equalsIgnoreCase(key))
+                || (context.client().flowClient().getCookie("sessionid") != null);
+            if (!hasCookieAuth)
+            {
+                return findings;
+            }
+            Map<String, Object> schema = context.client().introspect();
+            if (schema == null || schema.isEmpty())
+            {
+                return findings;
+            }
+            List<Map<String, Object>> mutations = GraphQLHunterCore.getRootFields(schema, "mutationType");
+            if (mutations.isEmpty())
+            {
+                return findings;
+            }
+            Operation built = GraphQLHunterCore.buildOperation(schema, mutations.getFirst(), "mutation", Map.of());
+            if (!built.testable)
+            {
+                return findings;
+            }
+
+            GraphQLResponse missingOrigin = context.client().query(built.query, built.variables, built.operationName, Map.of(), false);
+            if (missingOrigin.hasData() && !missingOrigin.errorsText().toLowerCase(Locale.ROOT).contains("csrf"))
+            {
+                Finding finding = finding(
+                    "CSRF Vulnerability: Missing Origin Header Validation",
+                    name(),
+                    FindingSeverity.HIGH,
+                    FindingStatus.POTENTIAL,
+                    "A state-changing mutation succeeded without explicit Origin/Referer validation signals.",
+                    "If cookie-authenticated mutations do not validate request origin, cross-site request forgery may be possible.",
+                    "Validate Origin/Referer and require CSRF tokens or equivalent anti-CSRF mechanisms for mutations."
+                );
+                finding.proof = built.query;
+                finding.requestSnippet = built.query;
+                findings.add(finding);
+            }
+
+            String csrfHeader = context.request().headers.keySet().stream()
+                .filter(key -> key.toLowerCase(Locale.ROOT).contains("csrf") || key.toLowerCase(Locale.ROOT).contains("xsrf"))
+                .findFirst()
+                .orElse("");
+            if (csrfHeader.isBlank())
+            {
+                Finding finding = finding(
+                    "CSRF Token Not Detected",
+                    name(),
+                    FindingSeverity.MEDIUM,
+                    FindingStatus.MANUAL_REVIEW,
+                    "No likely CSRF token header was observed alongside cookie-based auth context.",
+                    "Without CSRF tokens or equivalent protections, cookie-authenticated mutations may be at higher risk of CSRF.",
+                    "Review whether CSRF tokens, SameSite cookies, and Origin/Referer validation are implemented consistently."
+                );
+                findings.add(finding);
+            }
+            else
+            {
+                Finding finding = finding(
+                    "CSRF Token Detected",
+                    name(),
+                    FindingSeverity.INFO,
+                    FindingStatus.CONFIRMED,
+                    "A likely CSRF-related header was present in the current auth context.",
+                    "Presence of a CSRF token often indicates a mitigation is in place, though validation still needs review.",
+                    "Confirm server-side CSRF token validation for all mutations."
+                );
+                finding.evidence.put("header", csrfHeader);
+                findings.add(finding);
+            }
+            return findings;
+        }
+    }
+
+    public static final class FileUploadScanner implements ScannerCheck
+    {
+        @Override
+        public String name()
+        {
+            return "file_upload";
+        }
+
+        @Override
+        public List<Finding> scan(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            Map<String, Object> schema = context.client().introspect();
+            if (schema == null || schema.isEmpty())
+            {
+                return findings;
+            }
+            List<Map<String, Object>> mutations = GraphQLHunterCore.getRootFields(schema, "mutationType");
+            for (Map<String, Object> mutation : mutations)
+            {
+                String mutationName = String.valueOf(mutation.getOrDefault("name", ""));
+                List<Map<String, Object>> args = GraphQLHunterCore.asList(mutation.get("args"));
+                Map<String, Map<String, Object>> argByName = new LinkedHashMap<>();
+                args.forEach(arg -> argByName.put(String.valueOf(arg.get("name")).toLowerCase(Locale.ROOT), arg));
+
+                boolean uploadScalar = args.stream().anyMatch(arg -> "Upload".equals(GraphQLHunterCore.extractTypeName(GraphQLHunterCore.asMap(arg.get("type")))));
+                boolean stringUploadSurface = (argByName.containsKey("filename") || argByName.containsKey("file") || argByName.containsKey("path"))
+                    && (argByName.containsKey("content") || argByName.containsKey("text") || argByName.containsKey("data") || argByName.containsKey("body"))
+                    && mutationName.toLowerCase(Locale.ROOT).matches(".*(upload|import|file|paste).*");
+
+                if (uploadScalar || stringUploadSurface)
+                {
+                    Finding finding = finding(
+                        "File Upload Mutation Detected",
+                        name(),
+                        FindingSeverity.INFO,
+                        FindingStatus.MANUAL_REVIEW,
+                        "The schema exposes a mutation that appears to accept uploaded file data or upload-like string fields.",
+                        "File upload surfaces can be vulnerable to path traversal, dangerous extensions, oversize uploads, and filename injection.",
+                        "Review filename validation, file type checks, storage location, and size limits. Exercise multipart upload handling where applicable."
+                    );
+                    finding.evidence.put("mutation", mutationName);
+                    finding.evidence.put("upload_scalar", uploadScalar);
+                    finding.evidence.put("string_upload_surface", stringUploadSurface);
+                    findings.add(finding);
+                }
+            }
+            return findings;
+        }
+    }
+
+    public static final class MutationFuzzerScanner implements ScannerCheck
+    {
+        private static final List<String> DANGEROUS_KEYWORDS = List.of(
+            "delete", "remove", "drop", "destroy", "admin", "privilege", "permission", "role", "grant", "revoke", "ban", "disable"
+        );
+        private static final List<String> SENSITIVE_FIELDS = List.of(
+            "role", "admin", "isAdmin", "is_admin", "permissions", "privileges", "accessLevel",
+            "userId", "user_id", "ownerId", "owner_id", "createdAt", "created_at", "updatedAt", "updated_at",
+            "deletedAt", "deleted_at", "version", "id"
+        );
+
+        @Override
+        public String name()
+        {
+            return "mutation_fuzzer";
+        }
+
+        @Override
+        public List<Finding> scan(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            Map<String, Object> schema = context.client().introspect();
+            if (schema == null || schema.isEmpty())
+            {
+                return findings;
+            }
+            List<Map<String, Object>> mutations = GraphQLHunterCore.getRootFields(schema, "mutationType");
+            if (mutations.isEmpty())
+            {
+                return findings;
+            }
+            findings.addAll(identifyDangerousMutations(context, mutations));
+            findings.addAll(findIdorCandidates(context, mutations));
+            findings.addAll(findMassAssignmentCandidates(context, schema, mutations));
+            findings.addAll(findPrivilegeEscalationCandidates(context, mutations));
+            return findings;
+        }
+
+        private List<Finding> identifyDangerousMutations(ScanContext context, List<Map<String, Object>> mutations)
+        {
+            List<Map<String, Object>> dangerous = new ArrayList<>();
+            for (Map<String, Object> mutation : mutations)
+            {
+                String mutationName = String.valueOf(mutation.getOrDefault("name", "")).toLowerCase(Locale.ROOT);
+                for (String keyword : DANGEROUS_KEYWORDS)
+                {
+                    if (mutationName.contains(keyword))
+                    {
+                        dangerous.add(Map.of(
+                            "name", mutation.get("name"),
+                            "keyword", keyword,
+                            "args", mutation.get("args")
+                        ));
+                        break;
+                    }
+                }
+            }
+            if (dangerous.isEmpty())
+            {
+                return List.of();
+            }
+            Finding finding = finding(
+                "Potentially Dangerous Mutations Found",
+                name(),
+                FindingSeverity.INFO,
+                FindingStatus.MANUAL_REVIEW,
+                "The schema includes mutations whose names suggest destructive or privileged actions.",
+                "Sensitive mutations deserve close authorization review because they can modify high-value data or permissions.",
+                "Review authorization controls, audit logging, and rate limits for these mutations."
+            );
+            finding.evidence.put("dangerous_mutations", dangerous.subList(0, Math.min(10, dangerous.size())));
+            return List.of(finding);
+        }
+
+        private List<Finding> findIdorCandidates(ScanContext context, List<Map<String, Object>> mutations)
+        {
+            List<Map<String, Object>> candidates = new ArrayList<>();
+            for (Map<String, Object> mutation : mutations)
+            {
+                List<Map<String, Object>> args = GraphQLHunterCore.asList(mutation.get("args"));
+                List<Map<String, Object>> idArgs = new ArrayList<>();
+                for (Map<String, Object> arg : args)
+                {
+                    String argName = String.valueOf(arg.getOrDefault("name", "")).toLowerCase(Locale.ROOT);
+                    String argType = GraphQLHunterCore.extractTypeName(GraphQLHunterCore.asMap(arg.get("type")));
+                    if (argName.contains("id") || "ID".equals(argType) || ("Int".equals(argType) && argName.contains("id")))
+                    {
+                        idArgs.add(Map.of("name", arg.get("name"), "type", argType));
+                    }
+                }
+                if (!idArgs.isEmpty())
+                {
+                    candidates.add(Map.of(
+                        "mutation", mutation.get("name"),
+                        "id_arguments", idArgs
+                    ));
+                }
+            }
+            if (candidates.isEmpty())
+            {
+                return List.of();
+            }
+            Finding finding = finding(
+                "Potential IDOR/BOLA Vulnerabilities in Mutations",
+                name(),
+                FindingSeverity.INFO,
+                FindingStatus.MANUAL_REVIEW,
+                "Several mutations accept object identifiers and may require object-level authorization review.",
+                "If ownership or authorization checks are weak, attackers may be able to modify other users' resources by changing ID values.",
+                "Test these mutations with identifiers belonging to other users and verify server-side ownership checks."
+            );
+            finding.evidence.put("idor_candidates", candidates.subList(0, Math.min(10, candidates.size())));
+            return List.of(finding);
+        }
+
+        private List<Finding> findMassAssignmentCandidates(ScanContext context, Map<String, Object> schema, List<Map<String, Object>> mutations)
+        {
+            List<Map<String, Object>> candidates = new ArrayList<>();
+            for (Map<String, Object> mutation : mutations)
+            {
+                for (Map<String, Object> arg : GraphQLHunterCore.asList(mutation.get("args")))
+                {
+                    String typeName = GraphQLHunterCore.extractTypeName(GraphQLHunterCore.asMap(arg.get("type")));
+                    if (!typeName.contains("Input"))
+                    {
+                        continue;
+                    }
+                    Map<String, Object> resolved = findType(schema, typeName);
+                    if (resolved.isEmpty())
+                    {
+                        continue;
+                    }
+                    List<String> fieldNames = GraphQLHunterCore.asList(resolved.get("inputFields")).stream()
+                        .map(field -> String.valueOf(field.get("name")))
+                        .toList();
+                    List<String> sensitive = fieldNames.stream()
+                        .filter(field -> SENSITIVE_FIELDS.stream().anyMatch(sensitiveField -> sensitiveField.equalsIgnoreCase(field)))
+                        .toList();
+                    if (!sensitive.isEmpty())
+                    {
+                        candidates.add(Map.of(
+                            "mutation", mutation.get("name"),
+                            "input_type", typeName,
+                            "sensitive_fields", sensitive
+                        ));
+                    }
+                }
+            }
+            if (candidates.isEmpty())
+            {
+                return List.of();
+            }
+            Finding finding = finding(
+                "Potential Mass Assignment Vulnerability",
+                name(),
+                FindingSeverity.INFO,
+                FindingStatus.MANUAL_REVIEW,
+                "Some mutation input objects contain fields that look sensitive or privileged.",
+                "If the backend binds these input fields directly without filtering, clients may set fields they should not control.",
+                "Use allowlists for mutable fields and reject unexpected or sensitive attributes in mutation inputs."
+            );
+            finding.evidence.put("mass_assignment_candidates", candidates.subList(0, Math.min(10, candidates.size())));
+            return List.of(finding);
+        }
+
+        private List<Finding> findPrivilegeEscalationCandidates(ScanContext context, List<Map<String, Object>> mutations)
+        {
+            for (Map<String, Object> mutation : mutations)
+            {
+                String mutationName = String.valueOf(mutation.getOrDefault("name", "")).toLowerCase(Locale.ROOT);
+                if (mutationName.contains("user") || mutationName.contains("create") || mutationName.contains("update") || mutationName.contains("register") || mutationName.contains("signup"))
+                {
+                    Finding finding = finding(
+                        "Privilege Escalation Testing Recommended",
+                        name(),
+                        FindingSeverity.INFO,
+                        FindingStatus.MANUAL_REVIEW,
+                        "A user-related mutation may warrant privilege-escalation testing via unexpected input fields.",
+                        "If sensitive fields like role or admin flags are accepted, users may be able to escalate privileges during account or profile changes.",
+                        "Test whether unexpected privileged fields are ignored or rejected by the server."
+                    );
+                    finding.evidence.put("mutation", mutation.get("name"));
+                    return List.of(finding);
+                }
+            }
+            return List.of();
+        }
+
+        private Map<String, Object> findType(Map<String, Object> schema, String typeName)
+        {
+            for (Map<String, Object> type : GraphQLHunterCore.asList(schema.get("types")))
+            {
+                if (typeName.equals(String.valueOf(type.get("name"))))
+                {
+                    return type;
+                }
+            }
+            return Map.of();
         }
     }
 }

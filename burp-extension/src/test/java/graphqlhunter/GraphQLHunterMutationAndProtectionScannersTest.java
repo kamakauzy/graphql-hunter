@@ -1,0 +1,190 @@
+package graphqlhunter;
+
+import graphqlhunter.GraphQLHunterCore.GraphQLClient;
+import graphqlhunter.GraphQLHunterCore.GraphQLResponse;
+import graphqlhunter.GraphQLHunterModels.Finding;
+import graphqlhunter.GraphQLHunterModels.ScanRequest;
+import graphqlhunter.GraphQLHunterModels.ScanSettings;
+import graphqlhunter.config.ConfigurationLoader;
+import org.junit.jupiter.api.Test;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class GraphQLHunterMutationAndProtectionScannersTest
+{
+    @Test
+    void mutationFuzzerSurfacesDangerousMutationReviewCandidates()
+    {
+        GraphQLHunterScanners.ScanContext context = context(Map.of("Authorization", "Bearer token"), new ProtectionTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.MutationFuzzerScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Dangerous") || finding.title.contains("IDOR") || finding.title.contains("Mass Assignment")));
+    }
+
+    @Test
+    void rateLimitingScannerFlagsMissingThrottlingSignals()
+    {
+        GraphQLHunterScanners.ScanContext context = context(Map.of(), new ProtectionTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.RateLimitingScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Rate Limiting")));
+    }
+
+    @Test
+    void csrfScannerDetectsCookieBackedMutationReview()
+    {
+        GraphQLHunterScanners.ScanContext context = context(Map.of("Cookie", "sid=abc123"), new ProtectionTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.CsrfScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("CSRF")));
+    }
+
+    @Test
+    void fileUploadScannerDetectsUploadSurface()
+    {
+        GraphQLHunterScanners.ScanContext context = context(Map.of(), new ProtectionTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.FileUploadScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("File Upload Mutation Detected")));
+    }
+
+    private GraphQLHunterScanners.ScanContext context(Map<String, String> headers, GraphQLHunterCore.SessionAwareTransport transport)
+    {
+        ScanRequest request = new ScanRequest();
+        request.url = "https://api.example.com/graphql";
+        request.headers.putAll(headers);
+        ScanSettings settings = new ScanSettings();
+        settings.profileName = GraphQLHunterModels.ScanProfile.STANDARD.name();
+        GraphQLClient client = new GraphQLClient(request.url, request.headers, transport, null);
+        return new GraphQLHunterScanners.ScanContext(
+            request,
+            ConfigurationLoader.scanConfiguration(settings),
+            client,
+            null,
+            ConfigurationLoader.payloads()
+        );
+    }
+
+    private static final class ProtectionTransport implements GraphQLHunterCore.SessionAwareTransport
+    {
+        @Override
+        public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            if (body instanceof Map<?, ?> payload)
+            {
+                String query = String.valueOf(payload.get("query"));
+                if (query.contains("IntrospectionQuery"))
+                {
+                    return response(GraphQLHunterJson.readMap("""
+                        {
+                          "data": {
+                            "__schema": {
+                              "queryType": { "name": "Query" },
+                              "mutationType": { "name": "Mutation" },
+                              "types": [
+                                {
+                                  "kind": "OBJECT",
+                                  "name": "Query",
+                                  "fields": [
+                                    {
+                                      "name": "viewer",
+                                      "args": [],
+                                      "type": { "kind": "OBJECT", "name": "Viewer" }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "OBJECT",
+                                  "name": "Mutation",
+                                  "fields": [
+                                    {
+                                      "name": "deleteUser",
+                                      "args": [
+                                        { "name": "id", "type": { "kind": "SCALAR", "name": "ID" } }
+                                      ],
+                                      "type": { "kind": "OBJECT", "name": "MutationResponse" }
+                                    },
+                                    {
+                                      "name": "updateUser",
+                                      "args": [
+                                        { "name": "input", "type": { "kind": "OBJECT", "name": "UpdateUserInput" } }
+                                      ],
+                                      "type": { "kind": "OBJECT", "name": "MutationResponse" }
+                                    },
+                                    {
+                                      "name": "uploadPaste",
+                                      "args": [
+                                        { "name": "filename", "type": { "kind": "SCALAR", "name": "String" } },
+                                        { "name": "content", "type": { "kind": "SCALAR", "name": "String" } }
+                                      ],
+                                      "type": { "kind": "OBJECT", "name": "MutationResponse" }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "OBJECT",
+                                  "name": "Viewer",
+                                  "fields": [
+                                    { "name": "id", "args": [], "type": { "kind": "SCALAR", "name": "ID" } }
+                                  ]
+                                },
+                                {
+                                  "kind": "OBJECT",
+                                  "name": "MutationResponse",
+                                  "fields": [
+                                    { "name": "ok", "args": [], "type": { "kind": "SCALAR", "name": "Boolean" } }
+                                  ]
+                                },
+                                {
+                                  "kind": "OBJECT",
+                                  "name": "UpdateUserInput",
+                                  "inputFields": [
+                                    { "name": "role", "type": { "kind": "SCALAR", "name": "String" } },
+                                    { "name": "name", "type": { "kind": "SCALAR", "name": "String" } }
+                                  ]
+                                },
+                                { "kind": "SCALAR", "name": "ID" },
+                                { "kind": "SCALAR", "name": "String" },
+                                { "kind": "SCALAR", "name": "Boolean" }
+                              ]
+                            }
+                          }
+                        }
+                        """), 5L);
+                }
+            }
+            return response(Map.of("data", Map.of("__typename", "Query")), 5L);
+        }
+
+        @Override
+        public GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            return response(Map.of("ok", true), 5L);
+        }
+
+        @Override
+        public String getCookie(String name)
+        {
+            return "sessionid".equals(name) ? "cookie123" : null;
+        }
+
+        private GraphQLResponse response(Object body, long elapsedMillis)
+        {
+            GraphQLResponse response = new GraphQLResponse();
+            response.statusCode = 200;
+            response.body = GraphQLHunterJson.write(body);
+            response.json = body;
+            response.headers = new LinkedHashMap<>();
+            response.elapsedMillis = elapsedMillis;
+            return response;
+        }
+    }
+}
