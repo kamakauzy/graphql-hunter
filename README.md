@@ -103,12 +103,27 @@ What it does today:
 - installs as a **Java `.jar`** in Burp Pro
 - adds a **GraphQL Hunter** suite tab
 - imports GraphQL requests from Burp via the context menu
+- includes Burp-side workspaces for:
+  - request editing
+  - auth setup and validation
+  - pasted import parsing
+  - discovery analysis
+  - JSON / HTML export
 - runs focused native checks against the imported endpoint:
   - introspection
   - information disclosure
   - auth exposure differentials
   - batching
-  - lightweight error-based injection probes
+  - injection
+  - DoS / depth / complexity
+  - aliasing
+  - circular query review
+  - XSS reflection review
+  - JWT review
+  - rate limiting
+  - CSRF review
+  - file upload surface review
+  - mutation review heuristics
 
 The Burp addon is **additive**. The existing Python CLI remains the primary standalone workflow and is unchanged.
 
@@ -130,6 +145,7 @@ Load it in Burp Suite Professional:
 2. Add a new **Java** extension.
 3. Select `burp-extension/build/libs/GraphQLHunterBurp.jar`.
 4. Use Burp's HTTP message context menu to send a GraphQL request to the **GraphQL Hunter** tab.
+5. Use the tab's **Auth** and **Import & Discovery** workspaces to validate auth, parse pasted requests, analyze notes, and export findings.
 
 ## Usage Guide
 
