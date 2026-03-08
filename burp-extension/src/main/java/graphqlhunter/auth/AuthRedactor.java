@@ -4,6 +4,8 @@ import graphqlhunter.GraphQLHunterModels;
 
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +27,8 @@ public final class AuthRedactor
         "csrf-token",
         "xsrf-token",
         "password",
+        "pass",
+        "passwd",
         "client_secret",
         "refresh_token",
         "access_token",
@@ -75,18 +79,61 @@ public final class AuthRedactor
 
     public GraphQLHunterModels.Finding sanitizeFinding(GraphQLHunterModels.Finding finding, Set<String> extraSensitiveHeaders)
     {
+        Set<String> sensitive = new LinkedHashSet<>(DEFAULT_SENSITIVE_HEADERS);
+        if (extraSensitiveHeaders != null)
+        {
+            sensitive.addAll(extraSensitiveHeaders);
+        }
         GraphQLHunterModels.Finding copy = new GraphQLHunterModels.Finding();
         copy.title = finding.title;
         copy.scanner = finding.scanner;
         copy.severity = finding.severity;
         copy.status = finding.status;
-        copy.description = redactText(finding.description);
-        copy.impact = redactText(finding.impact);
-        copy.remediation = redactText(finding.remediation);
-        copy.proof = redactText(finding.proof);
-        copy.requestSnippet = redactText(finding.requestSnippet);
-        finding.evidence.forEach((key, value) -> copy.evidence.put(key, redactText(String.valueOf(value))));
+        copy.description = asText(redactObject(finding.description, sensitive));
+        copy.impact = asText(redactObject(finding.impact, sensitive));
+        copy.remediation = asText(redactObject(finding.remediation, sensitive));
+        copy.proof = asText(redactObject(finding.proof, sensitive));
+        copy.requestSnippet = asText(redactObject(finding.requestSnippet, sensitive));
+        finding.evidence.forEach((key, value) -> copy.evidence.put(key, redactObject(value, sensitive)));
         return copy;
+    }
+
+    public Object redactObject(Object value, Set<String> sensitiveKeys)
+    {
+        Set<String> sensitive = sensitiveKeys == null ? DEFAULT_SENSITIVE_HEADERS : sensitiveKeys;
+        if (value instanceof Map<?, ?> map)
+        {
+            LinkedHashMap<String, Object> redacted = new LinkedHashMap<>();
+            map.forEach((key, entryValue) ->
+            {
+                String keyText = String.valueOf(key);
+                if (sensitive.contains(keyText.toLowerCase(Locale.ROOT)))
+                {
+                    redacted.put(keyText, mask(String.valueOf(entryValue)));
+                }
+                else
+                {
+                    redacted.put(keyText, redactObject(entryValue, sensitive));
+                }
+            });
+            return redacted;
+        }
+        if (value instanceof List<?> list)
+        {
+            List<Object> redacted = new ArrayList<>();
+            list.forEach(item -> redacted.add(redactObject(item, sensitive)));
+            return redacted;
+        }
+        if (value instanceof String text)
+        {
+            return redactText(text);
+        }
+        return value;
+    }
+
+    private String asText(Object value)
+    {
+        return value == null ? null : String.valueOf(value);
     }
 
     private String mask(String value)

@@ -80,4 +80,15 @@ class AutoDiscoverTest
         assertEquals("token_auth", result.recommendations.get("auth_profile"));
         assertTrue(((List<?>) result.recommendations.get("auth_vars")).toString().contains("email=user@example.com"));
     }
+
+    @Test
+    void tokenOnlyDiscoveryGeneratesAuthorizationHeaderRecommendation()
+    {
+        DiscoveryResult result = new AutoDiscover().analyzeNotes("""
+            url: https://api.example.com/graphql
+            eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature
+            """);
+
+        assertTrue(((List<?>) result.recommendations.get("headers")).toString().contains("Authorization: Bearer"));
+    }
 }

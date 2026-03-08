@@ -177,6 +177,12 @@ public final class AutoDiscover
             result.headers.forEach((key, value) -> headers.add(key + ": " + value));
             recommendations.put("headers", headers);
         }
+        else if (result.tokens.containsKey("access_token"))
+        {
+            String token = result.tokens.get("access_token");
+            String value = token.toLowerCase(Locale.ROOT).startsWith("bearer ") ? token : "Bearer " + token;
+            recommendations.put("headers", List.of("Authorization: " + value));
+        }
         if (result.url != null)
         {
             recommendations.put("url", result.url);

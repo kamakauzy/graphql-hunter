@@ -399,6 +399,6 @@ Creating a Burp Suite extension is **feasible but non-trivial**. The core scanni
 
 **Recommendation**: Start with an MVP (6-8 weeks) to validate the approach and gather feedback, then iterate based on user needs.
 
-That recommendation has now been followed in this repository: the MVP addon exists under `burp-extension/`, while the Python CLI remains intact as the standalone workflow. Reaching full feature parity with the CLI would still require additional work across auth workflows, broader scanner coverage, richer UI, and tighter Burp-native integrations.
+That recommendation has now been followed in this repository: the MVP addon exists under `burp-extension/`, and it has since moved beyond the original scaffold with broader scanner coverage, concurrent rate-limit probing, JWT `alg:none` checks, richer report exports, and improved import/discovery carry-forward. The Python CLI still remains the standalone source of truth. Reaching full feature parity with the CLI would still require additional work across multipart upload execution, deeper auth workflows, richer UI, structured scan-execution bookkeeping, and tighter Burp-native integrations.
 
 The standalone tool remains valuable for automation and CI/CD, while the Burp extension would serve users who prefer integrated workflows.

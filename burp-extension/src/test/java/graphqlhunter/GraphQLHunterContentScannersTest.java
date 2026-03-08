@@ -40,6 +40,17 @@ class GraphQLHunterContentScannersTest
         assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Long-Lived JWT")));
     }
 
+    @Test
+    void jwtScannerDetectsNoneAlgorithmAcceptance()
+    {
+        String header = jwtToken(InstantEpoch.nowMinus(60), InstantEpoch.nowPlus(3600));
+        GraphQLHunterScanners.ScanContext context = context(Map.of("Authorization", "Bearer " + header), new NoneAlgAcceptingTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.JwtScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("none' Algorithm Vulnerability")));
+    }
+
     private GraphQLHunterScanners.ScanContext context(Map<String, String> headers, GraphQLHunterCore.SessionAwareTransport transport)
     {
         ScanRequest request = new ScanRequest();
@@ -63,7 +74,7 @@ class GraphQLHunterContentScannersTest
         return header + "." + payload + ".signature";
     }
 
-    private static final class ContentTransport implements GraphQLHunterCore.SessionAwareTransport
+    private static class ContentTransport implements GraphQLHunterCore.SessionAwareTransport
     {
         @Override
         public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
@@ -131,6 +142,15 @@ class GraphQLHunterContentScannersTest
                     return response(Map.of("data", Map.of("echo", Map.of("message", message))), 5L);
                 }
             }
+            if (body instanceof Map<?, ?> payload && "{ __typename }".equals(String.valueOf(payload.get("query"))))
+            {
+                if (!headers.containsKey("Authorization"))
+                {
+                    GraphQLResponse unauthorized = response(Map.of("errors", List.of(Map.of("message", "Unauthorized"))), 5L);
+                    unauthorized.statusCode = 401;
+                    return unauthorized;
+                }
+            }
             return response(Map.of("data", Map.of("__typename", "Query")), 5L);
         }
 
@@ -146,7 +166,7 @@ class GraphQLHunterContentScannersTest
             return null;
         }
 
-        private GraphQLResponse response(Object body, long elapsedMillis)
+        protected GraphQLResponse response(Object body, long elapsedMillis)
         {
             GraphQLResponse response = new GraphQLResponse();
             response.statusCode = 200;
@@ -155,6 +175,21 @@ class GraphQLHunterContentScannersTest
             response.headers = new LinkedHashMap<>();
             response.elapsedMillis = elapsedMillis;
             return response;
+        }
+    }
+
+    private static final class NoneAlgAcceptingTransport extends ContentTransport
+    {
+        @Override
+        public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            String authorization = headers.getOrDefault("Authorization", "");
+            if (authorization.startsWith("Bearer ") && authorization.endsWith(".") && body instanceof Map<?, ?> payload
+                && "{ __typename }".equals(String.valueOf(payload.get("query"))))
+            {
+                return response(Map.of("data", Map.of("__typename", "Query")), 5L);
+            }
+            return super.postJson(url, headers, body);
         }
     }
 

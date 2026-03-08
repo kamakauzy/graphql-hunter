@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -27,23 +28,23 @@ class GraphQLHunterMutationAndProtectionScannersTest
     }
 
     @Test
-    void rateLimitingScannerFlagsMissingThrottlingSignals()
+    void rateLimitingScannerDetectsTrueConcurrentThrottling()
     {
-        GraphQLHunterScanners.ScanContext context = context(Map.of(), new ProtectionTransport());
+        GraphQLHunterScanners.ScanContext context = context(Map.of(), new ConcurrentProtectionTransport());
 
         List<Finding> findings = new GraphQLHunterScanners.RateLimitingScanner().scan(context);
 
-        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Rate Limiting")));
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.equals("Rate Limiting Detected")));
     }
 
     @Test
-    void csrfScannerDetectsCookieBackedMutationReview()
+    void csrfScannerDetectsCrossSiteOriginAcceptance()
     {
         GraphQLHunterScanners.ScanContext context = context(Map.of("Cookie", "sid=abc123"), new ProtectionTransport());
 
         List<Finding> findings = new GraphQLHunterScanners.CsrfScanner().scan(context);
 
-        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("CSRF")));
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Origin Header Not Validated")));
     }
 
     @Test
@@ -73,7 +74,7 @@ class GraphQLHunterMutationAndProtectionScannersTest
         );
     }
 
-    private static final class ProtectionTransport implements GraphQLHunterCore.SessionAwareTransport
+    private static class ProtectionTransport implements GraphQLHunterCore.SessionAwareTransport
     {
         @Override
         public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
@@ -185,6 +186,46 @@ class GraphQLHunterMutationAndProtectionScannersTest
             response.headers = new LinkedHashMap<>();
             response.elapsedMillis = elapsedMillis;
             return response;
+        }
+    }
+
+    private static final class ConcurrentProtectionTransport extends ProtectionTransport
+    {
+        private final AtomicInteger inflight = new AtomicInteger();
+
+        @Override
+        public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            if (body instanceof Map<?, ?> payload && "{ __typename }".equals(String.valueOf(payload.get("query"))))
+            {
+                int current = inflight.incrementAndGet();
+                try
+                {
+                    try
+                    {
+                        Thread.sleep(25L);
+                    }
+                    catch (InterruptedException interruptedException)
+                    {
+                        Thread.currentThread().interrupt();
+                    }
+                    if (current >= 4)
+                    {
+                        GraphQLResponse response = new GraphQLResponse();
+                        response.statusCode = 429;
+                        response.body = GraphQLHunterJson.write(Map.of("errors", List.of(Map.of("message", "Too Many Requests"))));
+                        response.json = Map.of("errors", List.of(Map.of("message", "Too Many Requests")));
+                        response.headers = new LinkedHashMap<>();
+                        response.elapsedMillis = 25L;
+                        return response;
+                    }
+                }
+                finally
+                {
+                    inflight.decrementAndGet();
+                }
+            }
+            return super.postJson(url, headers, body);
         }
     }
 }

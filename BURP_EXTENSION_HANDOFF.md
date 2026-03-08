@@ -197,7 +197,7 @@ These are the most important next tasks.
 
 ### Transport/runtime fidelity
 - multipart upload execution parity is still incomplete
-- richer replay generation parity is still limited
+- replay generation is much closer to the Python CLI now, but multipart and batch-specific edge cases still need work
 - proxy-specific parity is not fully addressed
 - some deeper auth retry/refresh semantics remain lighter than Python
 
@@ -205,19 +205,17 @@ These are the most important next tasks.
 - some Java scanners are present but still lighter than the Python versions
 - especially worth improving:
   - injection timing/boolean sophistication
-  - JWT deep behavior checks (`none` alg / expired-token acceptance behavior)
+  - JWT expired-token acceptance behavior
   - file upload exploitation depth
-  - CSRF mutation behavior depth
+  - CSRF token/cookie handling depth
   - mutation fuzzer behavior depth
-  - rate-limiting realism/concurrency fidelity
 
 ### Reporting fidelity
-- HTML export is currently much simpler than the Python CLI HTML reporter
-- curl/Burp reproduction snippets are not yet fully mirrored in export output
+- HTML/JSON export is materially closer to the Python CLI now, including filters, structured redaction, and replay snippets
 - coverage/skipped/failed scanner reporting is not yet at Python fidelity
 
 ### UX polish
-- import/discovery/export workspace exists but needs refinement
+- pasted imports now carry auth headers forward, and discovery can promote token-only notes into usable headers, but the workspace still needs refinement
 - no richer GraphQL message editor/view integration yet
 - no Burp issue publication adapter yet
 - no multi-target/history UX yet
@@ -231,22 +229,18 @@ These are the most important next tasks.
 
 If continuing immediately, the best order is:
 
-1. **Improve reporting fidelity**
-   - bring Java HTML/JSON exports much closer to Python output
-   - add reproduction snippets / metadata / filtering details
-
-2. **Strengthen scanner fidelity**
+1. **Strengthen scanner fidelity**
    - deeper injection parity
-   - deeper JWT parity
+   - deeper JWT expiry / auth-behavior parity
    - deeper file upload / CSRF / mutation parity
 
-3. **Add Burp-native issue publishing**
+2. **Add Burp-native issue publishing**
    - optional issue publication adapter for findings
 
-4. **Add parity validation harness**
+3. **Add parity validation harness**
    - fixture-based comparison between Python and Java outputs
 
-5. **Polish import/discovery/export UX**
+4. **Polish import/discovery/export UX**
 
 ---
 

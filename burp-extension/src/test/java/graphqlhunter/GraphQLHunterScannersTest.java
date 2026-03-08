@@ -54,6 +54,25 @@ class GraphQLHunterScannersTest
         assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("SQL Injection")));
     }
 
+    @Test
+    void batchingScannerFlagsLargeAcceptedBatches()
+    {
+        ScanRequest request = new ScanRequest();
+        request.url = "https://api.example.com/graphql";
+        GraphQLClient client = new GraphQLClient(request.url, Map.of(), new FakeTransport(), null);
+        GraphQLHunterScanners.ScanContext context = new GraphQLHunterScanners.ScanContext(
+            request,
+            ConfigurationLoader.scanConfiguration(new ScanSettings()),
+            client,
+            null,
+            ConfigurationLoader.payloads()
+        );
+
+        List<Finding> findings = new GraphQLHunterScanners.BatchingScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Large GraphQL Batches Accepted")));
+    }
+
     private static final class FakeTransport implements GraphQLHunterCore.GraphQLTransport
     {
         @Override
@@ -119,11 +138,12 @@ class GraphQLHunterScannersTest
 
             if (body instanceof List<?>)
             {
-                return response(List.of(
-                    Map.of("data", Map.of("__typename", "Query")),
-                    Map.of("data", Map.of("__schema", Map.of("queryType", Map.of("name", "Query")))),
-                    Map.of("data", Map.of("__type", Map.of("name", "Query")))
-                ));
+                List<Map<String, Object>> results = new java.util.ArrayList<>();
+                for (int index = 0; index < ((List<?>) body).size(); index++)
+                {
+                    results.add(Map.of("data", Map.of("__typename", "Query")));
+                }
+                return response(results);
             }
 
             return response(Map.of("data", Map.of("__typename", "Query")));

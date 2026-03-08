@@ -198,6 +198,7 @@ public final class GraphQLHunterTab extends JPanel
         queryArea.setText(request.query == null ? "" : request.query);
         variablesArea.setText(renderVariables(request.variables));
         headersArea.setText(renderHeaders(request.headers));
+        applyImportedAuthHeaders(request.headers);
         statusLabel.setText("Imported GraphQL request from Burp.");
         saveState();
     }
@@ -682,10 +683,10 @@ public final class GraphQLHunterTab extends JPanel
             LinkedHashMap<String, String> values = parseKeyValueLines(authVars);
             authVarsArea.setText(renderKeyValueMap(values));
         }
-        else if (!latestDiscovery.headers.isEmpty())
+        else if (!recommendationHeaders(latestDiscovery).isEmpty())
         {
             authModeCombo.setSelectedItem("static_headers");
-            authStaticHeadersArea.setText(renderHeaders(latestDiscovery.headers));
+            authStaticHeadersArea.setText(renderHeaders(recommendationHeaders(latestDiscovery)));
         }
         statusLabel.setText("Applied discovery result to current configuration.");
     }
@@ -709,8 +710,8 @@ public final class GraphQLHunterTab extends JPanel
         try
         {
             String content = html
-                ? reportingService.toHtmlReport(urlField.getText().trim(), String.valueOf(profileCombo.getSelectedItem()), findings)
-                : reportingService.toJsonReport(urlField.getText().trim(), String.valueOf(profileCombo.getSelectedItem()), findings);
+                ? reportingService.toHtmlReport(buildRequestFromInputs(), buildScanSettingsFromInputs(), findings)
+                : reportingService.toJsonReport(buildRequestFromInputs(), buildScanSettingsFromInputs(), findings);
             Files.writeString(path, content);
             statusLabel.setText("Exported report to " + path.getFileName());
         }
@@ -728,7 +729,70 @@ public final class GraphQLHunterTab extends JPanel
         settings.detectFailures = authDetectFailuresCheck.isSelected();
         settings.authVars = parseKeyValueMap(authVarsArea.getText());
         settings.staticHeaders = parseHeaders(authStaticHeadersArea.getText());
+        settings.importedAuthHeaders = parseHeaders(authImportedHeadersArea.getText());
         return settings;
+    }
+
+    private void applyImportedAuthHeaders(Map<String, String> headers)
+    {
+        Map<String, String> importedAuthHeaders = extractImportedAuthHeaders(headers);
+        if (importedAuthHeaders.isEmpty())
+        {
+            return;
+        }
+        authImportedHeadersArea.setText(renderHeaders(importedAuthHeaders));
+        if ("none".equals(String.valueOf(authModeCombo.getSelectedItem())))
+        {
+            authModeCombo.setSelectedItem("imported_headers");
+        }
+    }
+
+    private Map<String, String> extractImportedAuthHeaders(Map<String, String> headers)
+    {
+        LinkedHashMap<String, String> authHeaders = new LinkedHashMap<>();
+        if (headers == null)
+        {
+            return authHeaders;
+        }
+        headers.forEach((key, value) ->
+        {
+            if (key == null)
+            {
+                return;
+            }
+            String lowered = key.toLowerCase(Locale.ROOT);
+            if (lowered.equals("authorization")
+                || lowered.equals("cookie")
+                || lowered.equals("token")
+                || lowered.equals("x-api-key")
+                || lowered.equals("x-auth-token"))
+            {
+                authHeaders.put(key, value);
+            }
+        });
+        return authHeaders;
+    }
+
+    private Map<String, String> recommendationHeaders(DiscoveryResult result)
+    {
+        LinkedHashMap<String, String> headers = new LinkedHashMap<>();
+        Object recommended = result.recommendations.get("headers");
+        if (recommended instanceof List<?> list)
+        {
+            list.stream()
+                .map(String::valueOf)
+                .filter(line -> line.contains(":"))
+                .forEach(line ->
+                {
+                    String[] parts = line.split(":", 2);
+                    headers.put(parts[0].trim(), parts[1].trim());
+                });
+        }
+        if (headers.isEmpty())
+        {
+            headers.putAll(result.headers);
+        }
+        return headers;
     }
 
     private Object parseVariables(String text)

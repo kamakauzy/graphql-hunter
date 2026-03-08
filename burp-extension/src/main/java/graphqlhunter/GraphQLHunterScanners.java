@@ -21,6 +21,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.regex.Pattern;
 
 public final class GraphQLHunterScanners
@@ -401,6 +405,65 @@ public final class GraphQLHunterScanners
                 findings.add(finding);
             }
 
+            findings.addAll(testBatchSizeLimits(context));
+
+            return findings;
+        }
+
+        private List<Finding> testBatchSizeLimits(ScanContext context)
+        {
+            List<Finding> findings = new ArrayList<>();
+            int configuredMaximum = Math.max(10, context.configuration().batchSize);
+            for (int size : List.of(10, 25, 50, 100))
+            {
+                if (size > Math.max(25, configuredMaximum * 5))
+                {
+                    break;
+                }
+                List<Map<String, Object>> batch = new ArrayList<>();
+                for (int index = 0; index < size; index++)
+                {
+                    batch.add(Map.of("query", "{ __typename }"));
+                }
+                GraphQLResponse response = context.client().batchQuery(batch);
+                String errors = response.errorsText().toLowerCase(Locale.ROOT);
+                List<Map<String, Object>> results = GraphQLHunterCore.asList(response.json);
+                long successCount = results.stream().filter(result -> result.get("data") != null).count();
+
+                if (errors.contains("batch") && (errors.contains("limit") || errors.contains("too many") || errors.contains("maximum")))
+                {
+                    Finding finding = finding(
+                        "Batch Size Limit Enforced",
+                        name(),
+                        FindingSeverity.INFO,
+                        FindingStatus.CONFIRMED,
+                        "The endpoint rejected an oversized GraphQL batch with a limit-style response.",
+                        "Batch-size limits reduce the blast radius of request batching abuse and brute-force amplification.",
+                        "No action needed. Keep batch-size enforcement aligned with expected client behavior."
+                    );
+                    finding.evidence.put("batch_limit", size);
+                    findings.add(finding);
+                    return findings;
+                }
+
+                if (successCount >= size && size > configuredMaximum)
+                {
+                    Finding finding = finding(
+                        "Large GraphQL Batches Accepted",
+                        name(),
+                        FindingSeverity.HIGH,
+                        FindingStatus.POTENTIAL,
+                        "The endpoint accepted a large batch of GraphQL operations without an obvious size limit.",
+                        "Large batches can amplify brute-force, enumeration, and resource-exhaustion attacks within a single request.",
+                        "Enforce strict server-side batch-size and complexity limits, especially for authenticated mutations."
+                    );
+                    finding.evidence.put("batch_size", size);
+                    finding.proof = GraphQLHunterJson.write(batch);
+                    finding.requestSnippet = finding.proof;
+                    findings.add(finding);
+                    return findings;
+                }
+            }
             return findings;
         }
     }
@@ -1144,6 +1207,7 @@ public final class GraphQLHunterScanners
             {
                 // Detection finding above still stands.
             }
+            findings.addAll(testNoneAlgorithm(context, headerName));
             return findings;
         }
 
@@ -1151,6 +1215,50 @@ public final class GraphQLHunterScanners
         {
             int padding = (4 - value.length() % 4) % 4;
             return value + "=".repeat(padding);
+        }
+
+        private List<Finding> testNoneAlgorithm(ScanContext context, String headerName)
+        {
+            if (headerName == null || headerName.isBlank())
+            {
+                return List.of();
+            }
+
+            String forgedHeader = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"alg\":\"none\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
+            String forgedPayload = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                GraphQLHunterJson.write(Map.of(
+                    "sub", "1234567890",
+                    "name", "GraphQL Hunter",
+                    "admin", true,
+                    "iat", java.time.Instant.now().getEpochSecond(),
+                    "exp", java.time.Instant.now().plusSeconds(3600).getEpochSecond()
+                )).getBytes(StandardCharsets.UTF_8)
+            );
+            String forgedToken = forgedHeader + "." + forgedPayload + ".";
+            String headerValue = "Authorization".equalsIgnoreCase(headerName) ? "Bearer " + forgedToken : forgedToken;
+
+            GraphQLResponse unauthenticated = context.client().withoutAuth().query("{ __typename }", null, null);
+            GraphQLResponse forged = context.client().query("{ __typename }", null, null, Map.of(headerName, headerValue), false);
+            if (forged.hasData() && (!unauthenticated.hasData() || unauthenticated.statusCode != forged.statusCode || containsAuthFailure(unauthenticated.errorsText())))
+            {
+                Finding finding = finding(
+                    "JWT 'none' Algorithm Vulnerability",
+                    name(),
+                    FindingSeverity.CRITICAL,
+                    FindingStatus.CONFIRMED,
+                    "The endpoint accepted a forged JWT that declared the 'none' algorithm.",
+                    "If signatureless JWTs are accepted, attackers can forge tokens and bypass authentication entirely.",
+                    "Reject unsigned JWTs, enforce a strict allowlist of secure algorithms, and validate signatures on every request."
+                );
+                finding.proof = headerName + ": " + headerValue;
+                finding.requestSnippet = "{ __typename }";
+                finding.evidence.put("header", headerName);
+                finding.evidence.put("forged_token_accepted", true);
+                findingsAddContext(finding, forged);
+                return List.of(finding);
+            }
+            return List.of();
         }
     }
 
@@ -1176,21 +1284,45 @@ public final class GraphQLHunterScanners
         {
             List<Finding> findings = new ArrayList<>();
             int total = Math.max(1, context.configuration().rateLimitRequests);
+            int concurrency = Math.max(1, Math.min(context.configuration().rateLimitConcurrency, total));
             int rateLimited = 0;
             int errors = 0;
             Map<Integer, Integer> statusCodes = new LinkedHashMap<>();
+            ExecutorService executor = Executors.newFixedThreadPool(concurrency);
+            CountDownLatch startGate = new CountDownLatch(1);
+            List<Future<GraphQLResponse>> futures = new ArrayList<>();
             for (int index = 0; index < total; index++)
             {
-                GraphQLResponse response = context.client().query("{ __typename }", null, null);
-                statusCodes.merge(response.statusCode, 1, Integer::sum);
-                if (response.statusCode == 429)
+                futures.add(executor.submit(() ->
                 {
-                    rateLimited++;
-                }
-                else if (response.statusCode == 0)
+                    startGate.await();
+                    return context.client().query("{ __typename }", null, null);
+                }));
+            }
+            startGate.countDown();
+            try
+            {
+                for (Future<GraphQLResponse> future : futures)
                 {
-                    errors++;
+                    GraphQLResponse response = future.get();
+                    statusCodes.merge(response.statusCode, 1, Integer::sum);
+                    if (response.statusCode == 429)
+                    {
+                        rateLimited++;
+                    }
+                    else if (response.statusCode == 0)
+                    {
+                        errors++;
+                    }
                 }
+            }
+            catch (Exception exception)
+            {
+                errors++;
+            }
+            finally
+            {
+                executor.shutdownNow();
             }
 
             if (rateLimited > 0)
@@ -1206,6 +1338,7 @@ public final class GraphQLHunterScanners
                 );
                 finding.evidence.put("rate_limited_requests", rateLimited);
                 finding.evidence.put("total_requests", total);
+                finding.evidence.put("concurrency", concurrency);
                 finding.evidence.put("status_codes", statusCodes);
                 findings.add(finding);
             }
@@ -1222,6 +1355,7 @@ public final class GraphQLHunterScanners
                 );
                 finding.evidence.put("error_count", errors);
                 finding.evidence.put("total_requests", total);
+                finding.evidence.put("concurrency", concurrency);
                 findings.add(finding);
             }
             else
@@ -1236,6 +1370,7 @@ public final class GraphQLHunterScanners
                     "Implement per-IP, per-user, and/or per-operation throttling as appropriate."
                 );
                 finding.evidence.put("total_requests", total);
+                finding.evidence.put("concurrency", concurrency);
                 finding.evidence.put("status_codes", statusCodes);
                 findings.add(finding);
             }
@@ -1373,7 +1508,7 @@ public final class GraphQLHunterScanners
             }
 
             GraphQLResponse missingOrigin = context.client().query(built.query, built.variables, built.operationName, Map.of(), false);
-            if (missingOrigin.hasData() && !missingOrigin.errorsText().toLowerCase(Locale.ROOT).contains("csrf"))
+            if (missingOrigin.hasData() && !containsCsrfFailure(missingOrigin.errorsText()))
             {
                 Finding finding = finding(
                     "CSRF Vulnerability: Missing Origin Header Validation",
@@ -1389,10 +1524,34 @@ public final class GraphQLHunterScanners
                 findings.add(finding);
             }
 
-            String csrfHeader = context.request().headers.keySet().stream()
-                .filter(key -> key.toLowerCase(Locale.ROOT).contains("csrf") || key.toLowerCase(Locale.ROOT).contains("xsrf"))
-                .findFirst()
-                .orElse("");
+            GraphQLResponse forgedOrigin = context.client().query(
+                built.query,
+                built.variables,
+                built.operationName,
+                Map.of(
+                    "Origin", "https://evil.example",
+                    "Referer", "https://evil.example/attack"
+                ),
+                false
+            );
+            if (forgedOrigin.hasData() && !containsCsrfFailure(forgedOrigin.errorsText()))
+            {
+                Finding finding = finding(
+                    "CSRF Vulnerability: Origin Header Not Validated",
+                    name(),
+                    FindingSeverity.HIGH,
+                    FindingStatus.POTENTIAL,
+                    "A state-changing mutation succeeded even when cross-site Origin and Referer headers were supplied.",
+                    "If cookie-authenticated mutations do not validate Origin or Referer, attackers may be able to trigger unwanted actions from another site.",
+                    "Reject cross-site Origin/Referer values for state-changing requests and require CSRF tokens or equivalent anti-CSRF controls."
+                );
+                finding.proof = built.query;
+                finding.requestSnippet = built.query;
+                finding.evidence.put("origin", "https://evil.example");
+                findings.add(finding);
+            }
+
+            String csrfHeader = detectCsrfTokenSource(context);
             if (csrfHeader.isBlank())
             {
                 Finding finding = finding(
@@ -1421,6 +1580,63 @@ public final class GraphQLHunterScanners
                 findings.add(finding);
             }
             return findings;
+        }
+    }
+
+    private static String detectCsrfTokenSource(ScanContext context)
+    {
+        String csrfHeader = context.request().headers.keySet().stream()
+            .filter(key -> key.toLowerCase(Locale.ROOT).contains("csrf") || key.toLowerCase(Locale.ROOT).contains("xsrf"))
+            .findFirst()
+            .orElse("");
+        if (!csrfHeader.isBlank())
+        {
+            return csrfHeader;
+        }
+
+        String cookieHeader = context.request().headers.entrySet().stream()
+            .filter(entry -> "cookie".equalsIgnoreCase(entry.getKey()))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElse("");
+        for (String cookie : cookieHeader.split(";"))
+        {
+            String name = cookie.split("=", 2)[0].trim();
+            String lowered = name.toLowerCase(Locale.ROOT);
+            if (lowered.contains("csrf") || lowered.contains("xsrf"))
+            {
+                return "cookie:" + name;
+            }
+        }
+
+        for (String cookieName : List.of("csrftoken", "csrf", "xsrf", "xsrf-token", "csrf-token"))
+        {
+            if (context.client().flowClient().getCookie(cookieName) != null)
+            {
+                return "cookie:" + cookieName;
+            }
+        }
+        return "";
+    }
+
+    private static boolean containsAuthFailure(String text)
+    {
+        String lowered = text == null ? "" : text.toLowerCase(Locale.ROOT);
+        return lowered.contains("unauthorized") || lowered.contains("forbidden") || lowered.contains("authentication");
+    }
+
+    private static boolean containsCsrfFailure(String text)
+    {
+        String lowered = text == null ? "" : text.toLowerCase(Locale.ROOT);
+        return lowered.contains("csrf") || lowered.contains("origin") || lowered.contains("referer") || lowered.contains("xsrf");
+    }
+
+    private static void findingsAddContext(Finding finding, GraphQLResponse response)
+    {
+        finding.evidence.put("status_code", response.statusCode);
+        if (!response.errorsText().isBlank())
+        {
+            finding.evidence.put("errors", abbreviate(response.errorsText()));
         }
     }
 
