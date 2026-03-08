@@ -965,6 +965,10 @@ Run the offline unit test suite:
 python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
+### Repository hygiene
+
+Keep editor/workspace files and target-specific scratch material out of version control. Reusable sample outputs belong in `examples/`; ad hoc local probes and one-off reports should stay local.
+
 ## Project Structure
 
 *For the curious and the contributors*

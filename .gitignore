@@ -46,8 +46,10 @@ env/
 .venv
 
 # IDE
+.cursor/
 .vscode/
 .idea/
+*.code-workspace
 *.swp
 *.swo
 *~
@@ -58,6 +60,7 @@ Thumbs.db
 
 # Output files
 *.json
+*-scan-results.html
 results/
 reports/
 
