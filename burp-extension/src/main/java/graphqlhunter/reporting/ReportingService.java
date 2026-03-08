@@ -2,6 +2,7 @@ package graphqlhunter.reporting;
 
 import graphqlhunter.GraphQLHunterJson;
 import graphqlhunter.GraphQLHunterModels;
+import graphqlhunter.GraphQLHunterModels.ScanExecutionResult;
 import graphqlhunter.auth.AuthRedactor;
 
 import java.time.Instant;
@@ -81,19 +82,29 @@ public final class ReportingService
 
     public String toJsonReport(GraphQLHunterModels.ScanRequest request, GraphQLHunterModels.ScanSettings settings, List<GraphQLHunterModels.Finding> findings)
     {
-        ReportSummary summary = summarize(findings);
-        List<Map<String, Object>> exportedFindings = exportFindings(request, findings);
+        ScanExecutionResult result = syntheticResult(request, settings, findings);
+        return toJsonReport(result);
+    }
+
+    public String toJsonReport(ScanExecutionResult result)
+    {
+        ScanExecutionResult normalized = normalizeResult(result);
+        ReportSummary summary = summarize(normalized.findings);
+        List<Map<String, Object>> exportedFindings = exportFindings(normalized.request, normalized.findings);
         Map<String, Object> report = new LinkedHashMap<>();
         LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("target", request == null || request.url == null ? "" : request.url);
-        metadata.put("profile", settings == null || settings.profileName == null ? "" : settings.profileName);
-        metadata.put("safe_mode", settings != null && settings.safeMode);
-        metadata.put("status", "completed");
-        metadata.put("timestamp", Instant.now().toString());
+        metadata.put("target", normalized.request.url == null ? "" : normalized.request.url);
+        metadata.put("profile", normalized.settings.profileName == null ? "" : normalized.settings.profileName);
+        metadata.put("safe_mode", normalized.settings.safeMode);
+        metadata.put("status", normalized.status);
+        metadata.put("timestamp", normalized.timestamp);
+        metadata.put("executed_scanners", normalized.executedScanners);
+        metadata.put("skipped_scanners", exportSkippedScanners(normalized));
+        metadata.put("failed_scanners", exportFailedScanners(normalized));
         report.put("metadata", metadata);
         report.put("summary", summaryMap(summary));
-        report.put("scan", scanMetadata(exportedFindings));
-        report.put("errors", List.of());
+        report.put("scan", scanMetadata(normalized));
+        report.put("errors", exportFailedScanners(normalized));
         report.put("findings", exportedFindings);
         return GraphQLHunterJson.write(report);
     }
@@ -109,8 +120,14 @@ public final class ReportingService
 
     public String toHtmlReport(GraphQLHunterModels.ScanRequest request, GraphQLHunterModels.ScanSettings settings, List<GraphQLHunterModels.Finding> findings)
     {
-        ReportSummary summary = summarize(findings);
-        List<Map<String, Object>> exportedFindings = exportFindings(request, findings);
+        return toHtmlReport(syntheticResult(request, settings, findings));
+    }
+
+    public String toHtmlReport(ScanExecutionResult result)
+    {
+        ScanExecutionResult normalized = normalizeResult(result);
+        ReportSummary summary = summarize(normalized.findings);
+        List<Map<String, Object>> exportedFindings = exportFindings(normalized.request, normalized.findings);
         StringBuilder html = new StringBuilder();
         String scanners = exportedFindings.stream()
             .map(finding -> String.valueOf(finding.getOrDefault("scanner", "")))
@@ -156,9 +173,11 @@ public final class ReportingService
             <body>
             """);
         html.append("<h1>GraphQL Hunter Report</h1>");
-        html.append("<div class=\"meta\">Target: ").append(escape(request == null ? "" : request.url)).append("<br>");
-        html.append("Profile: ").append(escape(settings == null ? "" : settings.profileName)).append("<br>");
-        html.append("Safe mode: ").append(settings != null && settings.safeMode).append("<br>");
+        html.append("<div class=\"meta\">Target: ").append(escape(normalized.request.url == null ? "" : normalized.request.url)).append("<br>");
+        html.append("Profile: ").append(escape(normalized.settings.profileName == null ? "" : normalized.settings.profileName)).append("<br>");
+        html.append("Safe mode: ").append(normalized.settings.safeMode).append("<br>");
+        html.append("Scan status: ").append(escape(normalized.status)).append("<br>");
+        html.append("Timestamp: ").append(escape(normalized.timestamp)).append("<br>");
         html.append("Risk Level: ").append(escape(summary.riskLevel)).append("</div>");
         html.append("<div class=\"summary\">");
         html.append(card("Total Findings", String.valueOf(summary.total)));
@@ -166,6 +185,16 @@ public final class ReportingService
         html.append(card("Potential", String.valueOf(summary.byStatus.getOrDefault("potential", 0))));
         html.append(card("Manual Review", String.valueOf(summary.byStatus.getOrDefault("manual_review", 0))));
         html.append("</div>");
+        html.append("<div class=\"meta\">Executed scanners: ")
+            .append(escape(String.valueOf(normalized.executedScanners.size())))
+            .append(" | Skipped scanners: ")
+            .append(escape(String.valueOf(normalized.skippedScanners.size())))
+            .append(" | Failed scanners: ")
+            .append(escape(String.valueOf(normalized.failedScanners.size())))
+            .append("</div>");
+        appendSection(html, "Executed Scanners", String.join("\n", normalized.executedScanners));
+        appendSection(html, "Skipped Scanners", GraphQLHunterJson.write(exportSkippedScanners(normalized)));
+        appendSection(html, "Failed Scanners", GraphQLHunterJson.write(exportFailedScanners(normalized)));
         html.append("""
             <div class="filters">
               <label>Severity
@@ -280,19 +309,95 @@ public final class ReportingService
         return map;
     }
 
-    private Map<String, Object> scanMetadata(List<Map<String, Object>> findings)
+    private Map<String, Object> scanMetadata(ScanExecutionResult result)
     {
-        List<String> executed = findings.stream()
-            .map(finding -> String.valueOf(finding.getOrDefault("scanner", "")))
-            .filter(scanner -> !scanner.isBlank())
+        return Map.of(
+            "status", result.status,
+            "executed_scanners", result.executedScanners,
+            "skipped_scanners", exportSkippedScanners(result),
+            "failed_scanners", exportFailedScanners(result)
+        );
+    }
+
+    private List<Map<String, String>> exportSkippedScanners(ScanExecutionResult result)
+    {
+        return result.skippedScanners.stream()
+            .map(skip -> Map.of(
+                "scanner", skip.scanner == null ? "" : skip.scanner,
+                "reason", skip.reason == null ? "" : skip.reason
+            ))
+            .toList();
+    }
+
+    private List<Map<String, String>> exportFailedScanners(ScanExecutionResult result)
+    {
+        return result.failedScanners.stream()
+            .map(failure -> Map.of(
+                "scanner", failure.scanner == null ? "" : failure.scanner,
+                "error", failure.error == null ? "" : failure.error
+            ))
+            .toList();
+    }
+
+    private ScanExecutionResult syntheticResult(
+        GraphQLHunterModels.ScanRequest request,
+        GraphQLHunterModels.ScanSettings settings,
+        List<GraphQLHunterModels.Finding> findings
+    )
+    {
+        ScanExecutionResult result = new ScanExecutionResult();
+        result.request = request == null ? new GraphQLHunterModels.ScanRequest() : request.copy();
+        result.settings = settings == null ? new GraphQLHunterModels.ScanSettings() : settings.copy();
+        result.findings = findings == null ? List.of() : new ArrayList<>(findings);
+        result.status = "completed";
+        result.timestamp = Instant.now().toString();
+        result.executedScanners = result.findings.stream()
+            .map(finding -> finding.scanner)
+            .filter(scanner -> scanner != null && !scanner.isBlank())
             .distinct()
             .toList();
-        return Map.of(
-            "status", "completed",
-            "executed_scanners", executed,
-            "skipped_scanners", List.of(),
-            "failed_scanners", List.of()
-        );
+        return result;
+    }
+
+    private ScanExecutionResult normalizeResult(ScanExecutionResult result)
+    {
+        if (result == null)
+        {
+            return syntheticResult(new GraphQLHunterModels.ScanRequest(), new GraphQLHunterModels.ScanSettings(), List.of());
+        }
+        if (result.request == null)
+        {
+            result.request = new GraphQLHunterModels.ScanRequest();
+        }
+        if (result.settings == null)
+        {
+            result.settings = new GraphQLHunterModels.ScanSettings();
+        }
+        if (result.findings == null)
+        {
+            result.findings = new ArrayList<>();
+        }
+        if (result.executedScanners == null)
+        {
+            result.executedScanners = new ArrayList<>();
+        }
+        if (result.skippedScanners == null)
+        {
+            result.skippedScanners = new ArrayList<>();
+        }
+        if (result.failedScanners == null)
+        {
+            result.failedScanners = new ArrayList<>();
+        }
+        if (result.status == null || result.status.isBlank())
+        {
+            result.status = result.failedScanners.isEmpty() ? "completed" : "partial";
+        }
+        if (result.timestamp == null || result.timestamp.isBlank())
+        {
+            result.timestamp = Instant.now().toString();
+        }
+        return result;
     }
 
     private Map<String, Object> buildReplayRequest(GraphQLHunterModels.ScanRequest request, GraphQLHunterModels.Finding finding)

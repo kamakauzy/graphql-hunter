@@ -210,8 +210,7 @@ These are the most important next tasks.
   - mutation fuzzer behavior depth
 
 ### Reporting fidelity
-- HTML/JSON export is materially closer to the Python CLI now, including filters, structured redaction, and replay snippets
-- coverage/skipped/failed scanner reporting is not yet at Python fidelity
+- HTML/JSON export is materially closer to the Python CLI now, including filters, structured redaction, replay snippets, and real executed/skipped/failed scanner metadata
 
 ### UX polish
 - pasted imports now carry auth headers forward, discovery can promote token-only notes into usable headers, and runtime-only secrets are exposed in the UI, but the workspace still needs refinement

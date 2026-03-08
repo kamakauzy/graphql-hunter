@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GraphQLHunterScannersTest
@@ -109,6 +110,42 @@ class GraphQLHunterScannersTest
         List<Finding> findings = new GraphQLHunterScanners.InjectionLiteScanner().scan(context);
 
         assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Boolean-Differential")));
+    }
+
+    @Test
+    void runWithContextTracksExecutedAndSkippedScanners()
+    {
+        ScanRequest request = new ScanRequest();
+        request.url = "https://api.example.com/graphql";
+        ScanSettings settings = new ScanSettings();
+        settings.scannerEnabled.put("introspection", true);
+        settings.scannerEnabled.put("info_disclosure", false);
+        settings.scannerEnabled.put("auth", false);
+        settings.scannerEnabled.put("batching", false);
+        settings.scannerEnabled.put("injection", false);
+        settings.scannerEnabled.put("dos", false);
+        settings.scannerEnabled.put("aliasing", false);
+        settings.scannerEnabled.put("circular", false);
+        settings.scannerEnabled.put("xss", false);
+        settings.scannerEnabled.put("jwt", false);
+        settings.scannerEnabled.put("rate_limit", false);
+        settings.scannerEnabled.put("csrf", false);
+        settings.scannerEnabled.put("file_upload", false);
+        settings.scannerEnabled.put("mutation_fuzzing", false);
+        GraphQLHunterScanners.ScanContext context = new GraphQLHunterScanners.ScanContext(
+            request,
+            ConfigurationLoader.scanConfiguration(settings),
+            new GraphQLClient(request.url, Map.of(), new FakeTransport(), null),
+            null,
+            ConfigurationLoader.payloads()
+        );
+
+        GraphQLHunterModels.ScanExecutionResult result = GraphQLHunterScanners.runWithContext(context);
+
+        assertEquals(List.of("Introspection"), result.executedScanners);
+        assertTrue(result.skippedScanners.stream().anyMatch(skip -> "Information Disclosure".equals(skip.scanner)));
+        assertTrue(result.failedScanners.isEmpty());
+        assertEquals("completed", result.status);
     }
 
     private static class FakeTransport implements GraphQLHunterCore.GraphQLTransport

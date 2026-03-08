@@ -1,6 +1,8 @@
 package graphqlhunter;
 
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public final class GraphQLHunterModels
@@ -123,6 +125,50 @@ public final class GraphQLHunterModels
         public String scanProfile = ScanProfile.STANDARD.name();
         public ScanSettings scanSettings = new ScanSettings();
         public AuthSettings authSettings = new AuthSettings();
+    }
+
+    public static final class ScannerSkip
+    {
+        public String scanner = "";
+        public String reason = "";
+
+        public ScannerSkip()
+        {
+        }
+
+        public ScannerSkip(String scanner, String reason)
+        {
+            this.scanner = scanner;
+            this.reason = reason;
+        }
+    }
+
+    public static final class ScannerFailure
+    {
+        public String scanner = "";
+        public String error = "";
+
+        public ScannerFailure()
+        {
+        }
+
+        public ScannerFailure(String scanner, String error)
+        {
+            this.scanner = scanner;
+            this.error = error;
+        }
+    }
+
+    public static final class ScanExecutionResult
+    {
+        public ScanRequest request = new ScanRequest();
+        public ScanSettings settings = new ScanSettings();
+        public List<Finding> findings = new ArrayList<>();
+        public List<String> executedScanners = new ArrayList<>();
+        public List<ScannerSkip> skippedScanners = new ArrayList<>();
+        public List<ScannerFailure> failedScanners = new ArrayList<>();
+        public String status = "completed";
+        public String timestamp = "";
     }
 
     public static final class ScanSettings

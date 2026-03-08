@@ -82,6 +82,30 @@ class ReportingServiceTest
         assertTrue(json.contains("\"burp_request\""));
     }
 
+    @Test
+    void reportIncludesRealScanExecutionMetadata()
+    {
+        GraphQLHunterModels.ScanExecutionResult result = new GraphQLHunterModels.ScanExecutionResult();
+        result.request = request();
+        result.settings = settings();
+        result.findings = List.of(finding(GraphQLHunterModels.FindingSeverity.HIGH, GraphQLHunterModels.FindingStatus.CONFIRMED));
+        result.executedScanners = List.of("Introspection", "Information Disclosure");
+        result.skippedScanners = List.of(new GraphQLHunterModels.ScannerSkip("JWT Security", "disabled by profile"));
+        result.failedScanners = List.of(new GraphQLHunterModels.ScannerFailure("Rate Limiting", "boom"));
+        result.status = "partial";
+        result.timestamp = "2026-03-08T00:00:00Z";
+
+        String json = new ReportingService().toJsonReport(result);
+        String html = new ReportingService().toHtmlReport(result);
+
+        assertTrue(json.contains("partial"));
+        assertTrue(json.contains("\"failed_scanners\""));
+        assertTrue(json.contains("\"disabled by profile\""));
+        assertTrue(html.contains("Scan status: partial"));
+        assertTrue(html.contains("Executed Scanners"));
+        assertTrue(html.contains("Failed Scanners"));
+    }
+
     private GraphQLHunterModels.ScanRequest request()
     {
         GraphQLHunterModels.ScanRequest request = new GraphQLHunterModels.ScanRequest();

@@ -8,6 +8,7 @@ import graphqlhunter.GraphQLHunterModels.AuthSettings;
 import graphqlhunter.GraphQLHunterModels.ScanProfile;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
 import graphqlhunter.GraphQLHunterModels.ScanSettings;
+import graphqlhunter.GraphQLHunterModels.ScanExecutionResult;
 import graphqlhunter.auth.config.AuthConfigurationLoader;
 import graphqlhunter.discovery.AutoDiscover;
 import graphqlhunter.discovery.DiscoveryResult;
@@ -55,7 +56,7 @@ public final class GraphQLHunterTab extends JPanel
 
         void saveState(ExtensionState state);
 
-        void runScan(ScanRequest request, ScanSettings settings, Consumer<List<Finding>> onSuccess, Consumer<Throwable> onError);
+        void runScan(ScanRequest request, ScanSettings settings, Consumer<ScanExecutionResult> onSuccess, Consumer<Throwable> onError);
 
         void validateAuth(ScanRequest request, AuthSettings settings, Consumer<String> onSuccess, Consumer<Throwable> onError);
 
@@ -106,6 +107,7 @@ public final class GraphQLHunterTab extends JPanel
     private final List<ImportedRequest> importedRequests = new ArrayList<>();
     private final ReportingService reportingService = new ReportingService();
     private DiscoveryResult latestDiscovery;
+    private ScanExecutionResult lastScanResult;
 
     public GraphQLHunterTab(GraphQLHunterActions actions, GraphQLHunterLogger logger)
     {
@@ -183,6 +185,7 @@ public final class GraphQLHunterTab extends JPanel
         {
             findingTableModel.setRows(List.of());
             detailsArea.setText("");
+            lastScanResult = null;
             statusLabel.setText("Cleared findings.");
         });
 
@@ -530,13 +533,15 @@ public final class GraphQLHunterTab extends JPanel
         scanButton.setEnabled(false);
         detailsArea.setText("");
         findingTableModel.setRows(List.of());
+        lastScanResult = null;
 
-        actions.runScan(request, settings, findings ->
+        actions.runScan(request, settings, result ->
         {
-            findingTableModel.setRows(findings);
-            statusLabel.setText("Completed " + findings.size() + " finding(s).");
+            lastScanResult = result;
+            findingTableModel.setRows(result.findings);
+            statusLabel.setText(buildScanStatusMessage(result));
             scanButton.setEnabled(true);
-            if (!findings.isEmpty())
+            if (!result.findings.isEmpty())
             {
                 findingsTable.getSelectionModel().setSelectionInterval(0, 0);
             }
@@ -721,9 +726,10 @@ public final class GraphQLHunterTab extends JPanel
         Path path = chooser.getSelectedFile().toPath();
         try
         {
+            ScanExecutionResult result = currentExportResult(findings);
             String content = html
-                ? reportingService.toHtmlReport(buildRequestFromInputs(), buildScanSettingsFromInputs(), findings)
-                : reportingService.toJsonReport(buildRequestFromInputs(), buildScanSettingsFromInputs(), findings);
+                ? reportingService.toHtmlReport(result)
+                : reportingService.toJsonReport(result);
             Files.writeString(path, content);
             statusLabel.setText("Exported report to " + path.getFileName());
         }
@@ -743,7 +749,8 @@ public final class GraphQLHunterTab extends JPanel
         }
         publishIssuesButton.setEnabled(false);
         statusLabel.setText("Publishing findings to Burp...");
-        actions.publishIssues(buildRequestFromInputs(), findings, published ->
+        ScanExecutionResult result = currentExportResult(findings);
+        actions.publishIssues(result.request, result.findings, published ->
         {
             statusLabel.setText("Published " + published + " finding(s) to Burp.");
             publishIssuesButton.setEnabled(true);
@@ -752,6 +759,31 @@ public final class GraphQLHunterTab extends JPanel
             statusLabel.setText("Issue publication failed: " + throwable.getMessage());
             publishIssuesButton.setEnabled(true);
         });
+    }
+
+    private ScanExecutionResult currentExportResult(List<Finding> findings)
+    {
+        if (lastScanResult != null && lastScanResult.findings != null && !lastScanResult.findings.isEmpty())
+        {
+            return lastScanResult;
+        }
+        ScanExecutionResult fallback = new ScanExecutionResult();
+        fallback.request = buildRequestFromInputs();
+        fallback.settings = buildScanSettingsFromInputs();
+        fallback.findings = new ArrayList<>(findings);
+        fallback.status = "completed";
+        return fallback;
+    }
+
+    private String buildScanStatusMessage(ScanExecutionResult result)
+    {
+        int findingCount = result.findings == null ? 0 : result.findings.size();
+        int failureCount = result.failedScanners == null ? 0 : result.failedScanners.size();
+        if (failureCount > 0)
+        {
+            return "Partial scan: " + findingCount + " finding(s), " + failureCount + " scanner failure(s).";
+        }
+        return "Completed " + findingCount + " finding(s).";
     }
 
     private AuthSettings buildAuthSettingsFromInputs(AuthSettings existing)

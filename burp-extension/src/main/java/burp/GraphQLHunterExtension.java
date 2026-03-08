@@ -8,6 +8,7 @@ import graphqlhunter.GraphQLHunterModels.ExtensionState;
 import graphqlhunter.GraphQLHunterModels.Finding;
 import graphqlhunter.GraphQLHunterModels.AuthSettings;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
+import graphqlhunter.GraphQLHunterModels.ScanExecutionResult;
 import graphqlhunter.GraphQLHunterModels.ScanSettings;
 import graphqlhunter.GraphQLHunterCore;
 import graphqlhunter.auth.AuthManager;
@@ -157,18 +158,20 @@ public final class GraphQLHunterExtension implements BurpExtension
         }
 
         @Override
-        public void runScan(ScanRequest request, ScanSettings settings, Consumer<List<Finding>> onSuccess, Consumer<Throwable> onError)
+        public void runScan(ScanRequest request, ScanSettings settings, Consumer<ScanExecutionResult> onSuccess, Consumer<Throwable> onError)
         {
             executorService.submit(() ->
             {
                 try
                 {
-                    List<Finding> findings = GraphQLHunterScanners.run(
+                    ScanExecutionResult result = GraphQLHunterScanners.runWithMetadata(
                         request,
                         ConfigurationLoader.scanConfiguration(settings),
                         state.authSettings,
                         logger
                     );
+                    result.settings = settings.copy();
+                    result.timestamp = java.time.Instant.now().toString();
                     synchronized (GraphQLHunterExtension.this)
                     {
                         state.lastRequest = request.copy();
@@ -176,7 +179,7 @@ public final class GraphQLHunterExtension implements BurpExtension
                         state.scanProfile = settings.profileName;
                         persistState();
                     }
-                    SwingUtilities.invokeLater(() -> onSuccess.accept(findings));
+                    SwingUtilities.invokeLater(() -> onSuccess.accept(result));
                 }
                 catch (Throwable throwable)
                 {

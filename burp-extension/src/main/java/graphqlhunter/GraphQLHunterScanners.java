@@ -3,6 +3,9 @@ package graphqlhunter;
 import graphqlhunter.GraphQLHunterCore.GraphQLClient;
 import graphqlhunter.GraphQLHunterCore.GraphQLResponse;
 import graphqlhunter.GraphQLHunterCore.Operation;
+import graphqlhunter.GraphQLHunterModels.ScanExecutionResult;
+import graphqlhunter.GraphQLHunterModels.ScannerFailure;
+import graphqlhunter.GraphQLHunterModels.ScannerSkip;
 import graphqlhunter.GraphQLHunterModels.Finding;
 import graphqlhunter.GraphQLHunterModels.AuthSettings;
 import graphqlhunter.GraphQLHunterModels.FindingSeverity;
@@ -52,6 +55,11 @@ public final class GraphQLHunterScanners
 
     public static List<Finding> run(ScanRequest request, ScanConfiguration configuration, AuthSettings authSettings, GraphQLHunterLogger logger)
     {
+        return runWithMetadata(request, configuration, authSettings, logger).findings;
+    }
+
+    public static ScanExecutionResult runWithMetadata(ScanRequest request, ScanConfiguration configuration, AuthSettings authSettings, GraphQLHunterLogger logger)
+    {
         AuthManager authManager = AuthManager.fromState(authSettings, logger);
         GraphQLClient client = new GraphQLClient(
             request.url,
@@ -61,80 +69,41 @@ public final class GraphQLHunterScanners
             authManager
         );
         ScanContext context = new ScanContext(request, configuration, client, logger, ConfigurationLoader.payloads());
-        List<ScannerCheck> checks = new ArrayList<>();
-        if (isEnabled(configuration, "introspection"))
-        {
-            checks.add(new IntrospectionScanner());
-        }
-        if (isEnabled(configuration, "info_disclosure"))
-        {
-            checks.add(new InfoDisclosureScanner());
-        }
-        if (isEnabled(configuration, "auth"))
-        {
-            checks.add(new AuthExposureScanner());
-        }
-        if (isEnabled(configuration, "batching"))
-        {
-            checks.add(new BatchingScanner());
-        }
-        if (isEnabled(configuration, "injection"))
-        {
-            checks.add(new InjectionLiteScanner());
-        }
-        if (configuration.enableDos && isEnabled(configuration, "dos"))
-        {
-            checks.add(new DoSScanner());
-        }
-        if (isEnabled(configuration, "aliasing"))
-        {
-            checks.add(new AliasingScanner());
-        }
-        if (isEnabled(configuration, "circular"))
-        {
-            checks.add(new CircularQueryScanner());
-        }
-        if (isEnabled(configuration, "xss"))
-        {
-            checks.add(new XssScanner());
-        }
-        if (isEnabled(configuration, "jwt"))
-        {
-            checks.add(new JwtScanner());
-        }
-        if (configuration.enableRateLimitTesting && isEnabled(configuration, "rate_limit"))
-        {
-            checks.add(new RateLimitingScanner());
-        }
-        if (configuration.enableCsrfTesting && isEnabled(configuration, "csrf"))
-        {
-            checks.add(new CsrfScanner());
-        }
-        if (configuration.enableFileUploadTesting && isEnabled(configuration, "file_upload"))
-        {
-            checks.add(new FileUploadScanner());
-        }
-        if (isEnabled(configuration, "mutation_fuzzing"))
-        {
-            checks.add(new MutationFuzzerScanner());
-        }
+        return runWithContext(context);
+    }
 
-        List<Finding> findings = new ArrayList<>();
-        for (ScannerCheck check : checks)
+    static ScanExecutionResult runWithContext(ScanContext context)
+    {
+        ScanRequest request = context.request();
+        ScanConfiguration configuration = context.configuration();
+        GraphQLHunterLogger logger = context.logger();
+        List<PlannedCheck> plan = buildPlan(configuration);
+        ScanExecutionResult result = new ScanExecutionResult();
+        result.request = request == null ? new ScanRequest() : request.copy();
+        result.status = "completed";
+        for (PlannedCheck entry : plan)
         {
+            if (!entry.enabled())
+            {
+                result.skippedScanners.add(new ScannerSkip(entry.displayName(), entry.skipReason()));
+                continue;
+            }
+            result.executedScanners.add(entry.displayName());
             try
             {
-                findings.addAll(check.scan(context));
+                result.findings.addAll(entry.check().scan(context));
             }
             catch (RuntimeException exception)
             {
+                result.status = "partial";
+                result.failedScanners.add(new ScannerFailure(entry.displayName(), exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage()));
                 if (logger != null)
                 {
-                    logger.error("Scanner failed: " + check.name(), exception);
+                    logger.error("Scanner failed: " + entry.check().name(), exception);
                 }
             }
         }
-        return findings;
+        return result;
     }
 
     public interface ScannerCheck
@@ -152,6 +121,49 @@ public final class GraphQLHunterScanners
         PayloadConfiguration payloads
     )
     {
+    }
+
+    private record PlannedCheck(
+        String scannerKey,
+        String displayName,
+        boolean enabled,
+        String skipReason,
+        ScannerCheck check
+    )
+    {
+    }
+
+    private static List<PlannedCheck> buildPlan(ScanConfiguration configuration)
+    {
+        List<PlannedCheck> checks = new ArrayList<>();
+        checks.add(plan(configuration, "introspection", "Introspection", true, "disabled by settings", new IntrospectionScanner()));
+        checks.add(plan(configuration, "info_disclosure", "Information Disclosure", true, "disabled by settings", new InfoDisclosureScanner()));
+        checks.add(plan(configuration, "auth", "Authentication/Authorization", true, "disabled by settings", new AuthExposureScanner()));
+        checks.add(plan(configuration, "batching", "Batching Attacks", true, "disabled by settings", new BatchingScanner()));
+        checks.add(plan(configuration, "injection", "Injection", true, "disabled by settings", new InjectionLiteScanner()));
+        checks.add(plan(configuration, "dos", "DoS Vectors", configuration.enableDos, "disabled by profile or settings", new DoSScanner()));
+        checks.add(plan(configuration, "aliasing", "Aliasing Abuse", true, "disabled by settings", new AliasingScanner()));
+        checks.add(plan(configuration, "circular", "Circular Queries", true, "disabled by settings", new CircularQueryScanner()));
+        checks.add(plan(configuration, "xss", "Cross-Site Scripting (XSS)", true, "disabled by settings", new XssScanner()));
+        checks.add(plan(configuration, "jwt", "JWT Security", true, "disabled by settings", new JwtScanner()));
+        checks.add(plan(configuration, "rate_limit", "Rate Limiting", configuration.enableRateLimitTesting, "disabled by profile or settings", new RateLimitingScanner()));
+        checks.add(plan(configuration, "csrf", "CSRF Protection", configuration.enableCsrfTesting, "disabled by profile or settings", new CsrfScanner()));
+        checks.add(plan(configuration, "file_upload", "File Upload", configuration.enableFileUploadTesting, "disabled by profile or settings", new FileUploadScanner()));
+        checks.add(plan(configuration, "mutation_fuzzing", "Mutation Fuzzing", true, "disabled by settings", new MutationFuzzerScanner()));
+        return checks;
+    }
+
+    private static PlannedCheck plan(
+        ScanConfiguration configuration,
+        String scannerKey,
+        String displayName,
+        boolean profileEnabled,
+        String skipReason,
+        ScannerCheck check
+    )
+    {
+        boolean enabled = profileEnabled && isEnabled(configuration, scannerKey);
+        return new PlannedCheck(scannerKey, displayName, enabled, enabled ? "" : skipReason, check);
     }
 
     public static final class IntrospectionScanner implements ScannerCheck
