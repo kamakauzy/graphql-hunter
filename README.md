@@ -102,6 +102,7 @@ This repository now also includes a **native Burp Suite Professional addon** und
 What it does today:
 - installs as a **Java `.jar`** in Burp Pro
 - adds a **GraphQL Hunter** suite tab
+- registers Burp-native **GraphQL** request and response editor tabs
 - imports GraphQL requests from Burp via the context menu
 - carries imported auth headers into the Burp auth workspace automatically
 - supports runtime-only auth secrets that are not persisted with Burp extension state
@@ -115,6 +116,7 @@ What it does today:
   - discovery analysis and application
   - JSON / HTML export with redacted replay artifacts, better batch/multipart replay fidelity, and real scan coverage metadata
   - native Burp issue publication
+- conservative native Burp passive/active scan checks for high-signal GraphQL findings
 - runs focused native checks against the imported endpoint:
   - introspection
   - information disclosure

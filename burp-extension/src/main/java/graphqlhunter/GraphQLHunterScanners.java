@@ -61,11 +61,28 @@ public final class GraphQLHunterScanners
 
     public static ScanExecutionResult runWithMetadata(ScanRequest request, ScanConfiguration configuration, AuthSettings authSettings, GraphQLHunterLogger logger)
     {
+        return runWithTransport(
+            request,
+            configuration,
+            new GraphQLHunterCore.JavaHttpTransport(configuration.timeoutSeconds, configuration.delaySeconds),
+            authSettings,
+            logger
+        );
+    }
+
+    public static ScanExecutionResult runWithTransport(
+        ScanRequest request,
+        ScanConfiguration configuration,
+        GraphQLHunterCore.GraphQLTransport transport,
+        AuthSettings authSettings,
+        GraphQLHunterLogger logger
+    )
+    {
         AuthManager authManager = AuthManager.fromState(authSettings, logger);
         GraphQLClient client = new GraphQLClient(
             request.url,
             request.headers,
-            new GraphQLHunterCore.JavaHttpTransport(configuration.timeoutSeconds, configuration.delaySeconds),
+            transport,
             logger,
             authManager
         );

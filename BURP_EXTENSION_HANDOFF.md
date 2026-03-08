@@ -213,8 +213,7 @@ These are the most important next tasks.
 - HTML/JSON export is materially closer to the Python CLI now, including filters, structured redaction, replay snippets, and real executed/skipped/failed scanner metadata
 
 ### UX polish
-- pasted imports now carry auth headers forward, preserve operation names and more request-shape fidelity, discovery can promote token-only notes into usable headers, runtime-only secrets are exposed in the UI, and recent-request history is available, but the workspace still needs refinement
-- no richer GraphQL message editor/view integration yet
+- pasted imports now carry auth headers forward, preserve operation names and more request-shape fidelity, discovery can promote token-only notes into usable headers, runtime-only secrets are exposed in the UI, recent-request history is available, and Burp request/response GraphQL editor tabs are registered, but the workspace still needs refinement
 - no richer multi-target/history workflow beyond a bounded recent-request list yet
 
 ### Validation / confidence
@@ -226,10 +225,9 @@ These are the most important next tasks.
 
 If continuing immediately, the best order is:
 
-1. **Strengthen scanner fidelity**
-   - deeper boolean-differential injection parity
-   - deeper JWT expiry / auth-behavior parity
-   - deeper file upload / CSRF / mutation parity
+1. **Expand native Burp scan-check coverage carefully**
+   - today only a conservative passive/active subset is registered natively
+   - deeper safe coverage still needs explicit lifecycle/scoping decisions
 
 2. **Add parity validation harness**
    - fixture-based comparison between Python and Java outputs

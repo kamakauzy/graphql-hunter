@@ -15,7 +15,11 @@ import graphqlhunter.auth.AuthManager;
 import graphqlhunter.GraphQLHunterPersistence;
 import graphqlhunter.GraphQLHunterScanners;
 import graphqlhunter.burp.BurpIssuePublisher;
+import graphqlhunter.burp.GraphQLHunterActiveScanCheck;
+import graphqlhunter.burp.GraphQLHunterPassiveScanCheck;
 import graphqlhunter.burp.GraphQLRequestCaptureHandler;
+import graphqlhunter.burp.GraphQLRequestEditorProvider;
+import graphqlhunter.burp.GraphQLResponseEditorProvider;
 import graphqlhunter.burp.RecentRequestHistory;
 import graphqlhunter.config.ConfigurationLoader;
 import graphqlhunter.burp.GraphQLHunterContextMenuItemsProvider;
@@ -58,7 +62,11 @@ public final class GraphQLHunterExtension implements BurpExtension
         this.tab = new GraphQLHunterTab(new Actions(), logger);
         api.userInterface().applyThemeToComponent(tab);
         registrations.add(api.userInterface().registerSuiteTab("GraphQL Hunter", tab));
+        registrations.add(api.userInterface().registerHttpRequestEditorProvider(new GraphQLRequestEditorProvider(api.userInterface())));
+        registrations.add(api.userInterface().registerHttpResponseEditorProvider(new GraphQLResponseEditorProvider(api.userInterface())));
         registrations.add(api.http().registerHttpHandler(new GraphQLRequestCaptureHandler(this::captureRequest)));
+        registrations.add(api.scanner().registerPassiveScanCheck(new GraphQLHunterPassiveScanCheck(issuePublisher), burp.api.montoya.scanner.scancheck.ScanCheckType.PER_REQUEST));
+        registrations.add(api.scanner().registerActiveScanCheck(new GraphQLHunterActiveScanCheck(issuePublisher), burp.api.montoya.scanner.scancheck.ScanCheckType.PER_REQUEST));
         registrations.add(api.userInterface().registerContextMenuItemsProvider(
             new GraphQLHunterContextMenuItemsProvider(logger, this::importRequest)
         ));
