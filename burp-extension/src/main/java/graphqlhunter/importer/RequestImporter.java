@@ -70,6 +70,8 @@ public final class RequestImporter
         {
             request.method = bodyText.isBlank() ? "GET" : "POST";
         }
+        request.contentType = request.headers.getOrDefault("Content-Type", request.headers.getOrDefault("content-type", "application/json"));
+        request.rawBody = bodyText;
         applyGraphQlBody(request, bodyText);
         return request;
     }
@@ -115,6 +117,8 @@ public final class RequestImporter
 
         request.url = buildUrl(host, path);
         String body = bodyStart >= lines.length ? "" : String.join("\n", java.util.Arrays.copyOfRange(lines, bodyStart, lines.length));
+        request.contentType = request.headers.getOrDefault("Content-Type", request.headers.getOrDefault("content-type", "application/json"));
+        request.rawBody = body;
         applyGraphQlBody(request, body);
         return request;
     }
@@ -126,8 +130,21 @@ public final class RequestImporter
             JsonNode node = GraphQLHunterJson.mapper().readTree(json);
             ImportedRequest request = new ImportedRequest();
             request.name = text(node, "name", "Imported from JSON");
+            request.rawBody = json;
             request.url = text(node, "url", "");
             request.method = text(node, "method", "POST");
+            request.contentType = text(node, "content_type", text(node, "contentType", "application/json"));
+            if (node.isArray())
+            {
+                request.batch = true;
+                JsonNode first = node.get(0);
+                request.query = first.path("query").asText("");
+                request.operationName = first.path("operationName").asText(extractOperationName(request.query));
+                request.variables = first.has("variables") && !first.get("variables").isNull()
+                    ? GraphQLHunterJson.mapper().convertValue(first.get("variables"), Object.class)
+                    : new LinkedHashMap<String, Object>();
+                return request;
+            }
             request.query = text(node, "query", "");
             request.operationName = text(node, "operation_name", text(node, "operationName", extractOperationName(request.query)));
             request.variables = node.has("variables") && !node.get("variables").isNull()
@@ -269,6 +286,7 @@ public final class RequestImporter
             JsonNode body = requestNode.path("body");
             if ("raw".equals(body.path("mode").asText("")))
             {
+                request.rawBody = body.path("raw").asText("");
                 applyGraphQlBody(request, body.path("raw").asText(""));
             }
             else if ("graphql".equals(body.path("mode").asText("")))
@@ -279,6 +297,7 @@ public final class RequestImporter
                     request.variables = normalizeVariables(body.path("graphql").get("variables"));
                 }
                 request.operationName = extractOperationName(request.query);
+                request.contentType = "application/json";
             }
 
             requests.add(request);
@@ -307,6 +326,11 @@ public final class RequestImporter
         }
         try
         {
+            if (request.contentType != null && request.contentType.toLowerCase(Locale.ROOT).contains("multipart/form-data"))
+            {
+                applyMultipartGraphQlBody(request, body);
+                return;
+            }
             JsonNode bodyJson = GraphQLHunterJson.mapper().readTree(body);
             if (bodyJson.isObject())
             {
@@ -320,12 +344,63 @@ public final class RequestImporter
                     : extractOperationName(request.query);
                 return;
             }
+            if (bodyJson.isArray() && bodyJson.size() > 0 && bodyJson.get(0).isObject() && bodyJson.get(0).has("query"))
+            {
+                request.batch = true;
+                request.query = bodyJson.get(0).path("query").asText("");
+                request.operationName = bodyJson.get(0).path("operationName").asText(extractOperationName(request.query));
+                if (bodyJson.get(0).has("variables"))
+                {
+                    request.variables = normalizeVariables(bodyJson.get(0).get("variables"));
+                }
+                return;
+            }
         }
         catch (Exception ignored)
         {
         }
         request.query = body;
         request.operationName = extractOperationName(body);
+    }
+
+    private static void applyMultipartGraphQlBody(ImportedRequest request, String body)
+    {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("name=\"operations\"\\R\\R(.*?)\\R--", java.util.regex.Pattern.DOTALL).matcher(body);
+        if (!matcher.find())
+        {
+            request.query = body;
+            return;
+        }
+        String operationsJson = matcher.group(1).trim();
+        try
+        {
+            JsonNode operations = GraphQLHunterJson.mapper().readTree(operationsJson);
+            if (operations.isObject())
+            {
+                request.query = operations.path("query").asText("");
+                request.operationName = operations.path("operationName").asText(extractOperationName(request.query));
+                if (operations.has("variables"))
+                {
+                    request.variables = normalizeVariables(operations.get("variables"));
+                }
+                return;
+            }
+            if (operations.isArray() && operations.size() > 0)
+            {
+                request.batch = true;
+                JsonNode first = operations.get(0);
+                request.query = first.path("query").asText("");
+                request.operationName = first.path("operationName").asText(extractOperationName(request.query));
+                if (first.has("variables"))
+                {
+                    request.variables = normalizeVariables(first.get("variables"));
+                }
+            }
+        }
+        catch (Exception ignored)
+        {
+            request.query = body;
+        }
     }
 
     private static Object normalizeVariables(JsonNode variables)

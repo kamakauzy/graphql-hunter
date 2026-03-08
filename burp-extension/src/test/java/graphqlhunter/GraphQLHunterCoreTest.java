@@ -244,6 +244,34 @@ class GraphQLHunterCoreTest
     }
 
     @Test
+    void parsesMultipartGraphqlRequestFromBurpSelection()
+    {
+        Optional<ScanRequest> parsed = GraphQLHunterCore.parseRequest(
+            "burp-selection",
+            "https://api.example.com/graphql",
+            "POST",
+            Map.of("Content-Type", "multipart/form-data; boundary=----Boundary"),
+            """
+            ------Boundary
+            Content-Disposition: form-data; name="operations"
+
+            {"query":"mutation Upload($file: Upload!) { upload(file: $file) { ok } }","variables":{"file":null},"operationName":"Upload"}
+            ------Boundary
+            Content-Disposition: form-data; name="map"
+
+            {"0":["variables.file"]}
+            ------Boundary--
+            """
+        );
+
+        assertTrue(parsed.isPresent());
+        assertEquals("Upload", parsed.get().operationName);
+        assertTrue(parsed.get().query.contains("upload"));
+        assertTrue(parsed.get().contentType.contains("multipart/form-data"));
+        assertTrue(parsed.get().rawBody.contains("operations"));
+    }
+
+    @Test
     void findUploadTargetsSupportsNestedInputUploads()
     {
         Map<String, Object> schema = GraphQLHunterJson.readMap("""

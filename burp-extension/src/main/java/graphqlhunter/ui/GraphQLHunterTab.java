@@ -115,6 +115,7 @@ public final class GraphQLHunterTab extends JPanel
     private final ReportingService reportingService = new ReportingService();
     private DiscoveryResult latestDiscovery;
     private ScanExecutionResult lastScanResult;
+    private ScanRequest currentRequest = new ScanRequest();
 
     public GraphQLHunterTab(GraphQLHunterActions actions, GraphQLHunterLogger logger)
     {
@@ -238,6 +239,7 @@ public final class GraphQLHunterTab extends JPanel
         variablesArea.setText(renderVariables(request.variables));
         headersArea.setText(renderHeaders(request.headers));
         applyImportedAuthHeaders(request.headers);
+        currentRequest = request.copy();
         statusLabel.setText(statusMessage);
         if (persist)
         {
@@ -628,6 +630,7 @@ public final class GraphQLHunterTab extends JPanel
     private ScanRequest buildRequestFromInputs()
     {
         ScanRequest request = new ScanRequest();
+        request = currentRequest == null ? new ScanRequest() : currentRequest.copy();
         request.source = sourceField.getText().isBlank() ? "manual" : sourceField.getText().trim();
         request.url = urlField.getText().trim();
         request.method = methodField.getText().isBlank() ? "POST" : methodField.getText().trim().toUpperCase(Locale.ROOT);
@@ -637,7 +640,36 @@ public final class GraphQLHunterTab extends JPanel
             : operationNameField.getText().trim();
         request.headers = parseHeaders(headersArea.getText());
         request.variables = parseVariables(variablesArea.getText());
+        request.contentType = request.headers.entrySet().stream()
+            .filter(entry -> "content-type".equalsIgnoreCase(entry.getKey()))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElse(request.contentType == null || request.contentType.isBlank() ? "application/json" : request.contentType);
+        if (hasCanonicalRequestChanged(request))
+        {
+            request.rawBody = "";
+            request.batch = false;
+        }
         return request;
+    }
+
+    private boolean hasCanonicalRequestChanged(ScanRequest request)
+    {
+        if (currentRequest == null)
+        {
+            return false;
+        }
+        return !safeText(currentRequest.url).equals(safeText(request.url))
+            || !safeText(currentRequest.method).equals(safeText(request.method))
+            || !safeText(currentRequest.query).equals(safeText(request.query))
+            || !safeText(currentRequest.operationName).equals(safeText(request.operationName))
+            || !safeText(renderVariables(currentRequest.variables)).equals(safeText(renderVariables(request.variables)))
+            || !safeText(renderHeaders(currentRequest.headers)).equals(safeText(renderHeaders(request.headers)));
+    }
+
+    private String safeText(String value)
+    {
+        return value == null ? "" : value;
     }
 
     private ScanSettings buildScanSettingsFromInputs()

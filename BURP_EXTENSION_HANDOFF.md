@@ -196,7 +196,7 @@ These are the most important next tasks.
 ## 1. Full-fidelity parity gaps
 
 ### Transport/runtime fidelity
-- initial multipart upload execution exists now, but full multipart parity across replay/import/UI paths is still incomplete
+- initial multipart upload execution exists now, and batch/multipart carry-forward is better, but full multipart parity across replay/import/UI paths is still incomplete
 - replay generation is much closer to the Python CLI now, but multipart and batch-specific edge cases still need work
 - proxy-specific parity is not fully addressed
 - some deeper auth retry/refresh semantics remain lighter than Python, though auth validation now uses an isolated anonymous baseline instead of sharing the authenticated session and the addon can now load external auth-config YAMLs

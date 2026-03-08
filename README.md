@@ -111,9 +111,9 @@ What it does today:
   - request editing, including operation-name preservation
   - recent GraphQL request history captured from Burp traffic
   - auth setup and validation
-  - pasted import parsing with content-based auto-detect for JSON/Postman/YAML
+  - pasted import parsing with content-based auto-detect for JSON/Postman/YAML plus better batch/multipart carry-forward
   - discovery analysis and application
-  - JSON / HTML export with redacted replay artifacts and real scan coverage metadata
+  - JSON / HTML export with redacted replay artifacts, better batch/multipart replay fidelity, and real scan coverage metadata
   - native Burp issue publication
 - runs focused native checks against the imported endpoint:
   - introspection

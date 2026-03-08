@@ -14,6 +14,9 @@ public final class ImportedRequest
     public String query = "";
     public Object variables = new LinkedHashMap<String, Object>();
     public String operationName = "";
+    public String contentType = "application/json";
+    public String rawBody = "";
+    public boolean batch;
     public Map<String, String> headers = new LinkedHashMap<>();
 
     public GraphQLHunterModels.ScanRequest toScanRequest()
@@ -25,6 +28,9 @@ public final class ImportedRequest
         request.query = query;
         request.variables = variables;
         request.operationName = operationName;
+        request.contentType = contentType;
+        request.rawBody = rawBody;
+        request.batch = batch;
         request.headers = new LinkedHashMap<>(headers);
         return request;
     }

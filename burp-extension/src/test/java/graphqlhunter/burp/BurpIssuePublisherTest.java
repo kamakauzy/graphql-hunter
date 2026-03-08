@@ -79,6 +79,30 @@ class BurpIssuePublisherTest
         assertEquals("One", siteMap.issues.getFirst().name());
     }
 
+    @Test
+    void preservesMultipartReplayRequestInIssueDetail()
+    {
+        BurpIssuePublisher publisher = publisher(new FakeSiteMap());
+        GraphQLHunterModels.ScanRequest request = request();
+        request.contentType = "multipart/form-data; boundary=----Boundary";
+        request.rawBody = """
+            ------Boundary
+            Content-Disposition: form-data; name="operations"
+
+            {"query":"mutation Upload($file: Upload!) { upload(file: $file) { ok } }","variables":{"file":null}}
+            ------Boundary--
+            """;
+
+        AuditIssue issue = publisher.toAuditIssue(request, finding(
+            GraphQLHunterModels.FindingSeverity.HIGH,
+            GraphQLHunterModels.FindingStatus.CONFIRMED,
+            "Multipart issue"
+        ));
+
+        assertTrue(issue.detail().contains("multipart/form-data"));
+        assertTrue(issue.detail().contains("operations"));
+    }
+
     private BurpIssuePublisher publisher(FakeSiteMap siteMap)
     {
         return new BurpIssuePublisher(

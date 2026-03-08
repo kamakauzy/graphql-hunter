@@ -143,4 +143,34 @@ class RequestImporterTest
         assertEquals("POST", request.method);
         assertEquals("query Viewer { viewer { id } }", request.query);
     }
+
+    @Test
+    void parsesRawMultipartGraphqlRequest()
+    {
+        ImportedRequest request = RequestImporter.fromRawHttp("""
+            POST /graphql HTTP/1.1
+            Host: api.example.com
+            Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+            ------WebKitFormBoundary
+            Content-Disposition: form-data; name="operations"
+
+            {"query":"mutation Upload($file: Upload!) { upload(file: $file) { ok } }","variables":{"file":null},"operationName":"Upload"}
+            ------WebKitFormBoundary
+            Content-Disposition: form-data; name="map"
+
+            {"0":["variables.file"]}
+            ------WebKitFormBoundary
+            Content-Disposition: form-data; name="0"; filename="proof.txt"
+            Content-Type: text/plain
+
+            hello
+            ------WebKitFormBoundary--
+            """);
+
+        assertEquals("Upload", request.operationName);
+        assertTrue(request.query.contains("upload"));
+        assertTrue(request.rawBody.contains("WebKitFormBoundary"));
+        assertTrue(request.contentType.contains("multipart/form-data"));
+    }
 }

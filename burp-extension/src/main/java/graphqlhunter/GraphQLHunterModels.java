@@ -50,6 +50,7 @@ public final class GraphQLHunterModels
         public String query = "";
         public Object variables = new LinkedHashMap<String, Object>();
         public String operationName = "";
+        public String contentType = "application/json";
         public String rawBody = "";
         public boolean batch;
         public Map<String, String> headers = new LinkedHashMap<>();
@@ -63,6 +64,7 @@ public final class GraphQLHunterModels
             copy.query = query;
             copy.variables = deepCopyObject(variables);
             copy.operationName = operationName;
+            copy.contentType = contentType;
             copy.rawBody = rawBody;
             copy.batch = batch;
             copy.headers = new LinkedHashMap<>(headers);

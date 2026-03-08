@@ -853,6 +853,7 @@ public final class GraphQLHunterCore
         request.url = url == null ? "" : url;
         request.method = method == null || method.isBlank() ? "POST" : method;
         request.headers = new LinkedHashMap<>(headers);
+        request.contentType = contentTypeValue(headers);
         request.rawBody = body == null ? "" : body;
 
         String contentType = headers.entrySet().stream()
@@ -865,6 +866,15 @@ public final class GraphQLHunterCore
         {
             request.query = body;
             return Optional.of(request);
+        }
+
+        if (contentType.toLowerCase(Locale.ROOT).contains("multipart/form-data") && body != null && !body.isBlank())
+        {
+            Optional<GraphQLHunterModels.ScanRequest> multipart = parseMultipartGraphQlRequest(request, body);
+            if (multipart.isPresent())
+            {
+                return multipart;
+            }
         }
 
         if ("GET".equalsIgnoreCase(request.method))
@@ -990,6 +1000,45 @@ public final class GraphQLHunterCore
         return values;
     }
 
+    private static Optional<GraphQLHunterModels.ScanRequest> parseMultipartGraphQlRequest(GraphQLHunterModels.ScanRequest request, String body)
+    {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("name=\"operations\"\\R\\R(.*?)\\R--", java.util.regex.Pattern.DOTALL).matcher(body);
+        if (!matcher.find())
+        {
+            return Optional.empty();
+        }
+        String operationsJson = matcher.group(1).trim();
+        try
+        {
+            JsonNode node = GraphQLHunterJson.mapper().readTree(operationsJson);
+            if (node.isObject() && node.has("query"))
+            {
+                request.query = node.path("query").asText("");
+                request.operationName = node.path("operationName").asText(extractOperationName(request.query));
+                if (node.has("variables") && !node.get("variables").isNull())
+                {
+                    request.variables = GraphQLHunterJson.mapper().convertValue(node.get("variables"), Object.class);
+                }
+                return request.query.isBlank() ? Optional.empty() : Optional.of(request);
+            }
+            if (node.isArray() && node.size() > 0 && node.get(0).isObject() && node.get(0).has("query"))
+            {
+                request.batch = true;
+                request.query = node.get(0).path("query").asText("");
+                request.operationName = node.get(0).path("operationName").asText(extractOperationName(request.query));
+                if (node.get(0).has("variables") && !node.get(0).get("variables").isNull())
+                {
+                    request.variables = GraphQLHunterJson.mapper().convertValue(node.get(0).get("variables"), Object.class);
+                }
+                return Optional.of(request);
+            }
+        }
+        catch (Exception ignored)
+        {
+        }
+        return Optional.empty();
+    }
+
     private static String extractOperationName(String query)
     {
         if (query == null || query.isBlank())
@@ -998,6 +1047,19 @@ public final class GraphQLHunterCore
         }
         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?:query|mutation|subscription)\\s+(\\w+)").matcher(query);
         return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private static String contentTypeValue(Map<String, String> headers)
+    {
+        if (headers == null)
+        {
+            return "application/json";
+        }
+        return headers.entrySet().stream()
+            .filter(entry -> "content-type".equalsIgnoreCase(entry.getKey()))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElse("application/json");
     }
 
     public static List<UploadTarget> findUploadTargets(Map<String, Object> schema, Map<String, Object> field)

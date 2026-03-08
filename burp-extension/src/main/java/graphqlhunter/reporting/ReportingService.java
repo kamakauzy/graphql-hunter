@@ -286,6 +286,14 @@ public final class ReportingService
         {
             Map<String, Object> replayRequest = buildReplayRequest(request, safe);
             exported.put("request", replayRequest);
+            if (replayRequest.containsKey("content_type"))
+            {
+                exported.put("content_type", replayRequest.get("content_type"));
+            }
+            if (replayRequest.containsKey("raw_body"))
+            {
+                exported.put("raw_body", replayRequest.get("raw_body"));
+            }
             exported.put("curl_command", generateCurlCommand(request.url, replayRequest));
             exported.put("burp_request", generateBurpRequest(request.url, replayRequest));
         }
@@ -405,6 +413,15 @@ public final class ReportingService
         LinkedHashMap<String, Object> replay = new LinkedHashMap<>();
         replay.put("method", request.method == null || request.method.isBlank() ? "POST" : request.method.toUpperCase(Locale.ROOT));
         replay.put("headers", redactor.redactHeaders(request.headers, java.util.Set.of()));
+        if (request.contentType != null && !request.contentType.isBlank())
+        {
+            replay.put("content_type", request.contentType);
+        }
+        if (request.rawBody != null && !request.rawBody.isBlank() && shouldPreserveRawBody(request))
+        {
+            replay.put("raw_body", redactor.redactText(request.rawBody));
+            return replay;
+        }
         Object body = replayBody(request, finding);
         replay.put("body", body);
         if (body instanceof Map<?, ?> bodyMap)
@@ -516,7 +533,9 @@ public final class ReportingService
     {
         @SuppressWarnings("unchecked")
         Map<String, String> headers = (Map<String, String>) request.getOrDefault("headers", Map.of());
-        String body = GraphQLHunterJson.write(request.get("body"));
+        String body = request.containsKey("raw_body")
+            ? String.valueOf(request.get("raw_body"))
+            : GraphQLHunterJson.write(request.get("body"));
         StringBuilder builder = new StringBuilder();
         builder.append("curl -X ").append(escapeShell(String.valueOf(request.getOrDefault("method", "POST")))).append(' ')
             .append(escapeShell(url));
@@ -536,8 +555,10 @@ public final class ReportingService
         @SuppressWarnings("unchecked")
         Map<String, String> headers = new LinkedHashMap<>((Map<String, String>) request.getOrDefault("headers", Map.of()));
         headers.putIfAbsent("Host", uri.getAuthority());
-        headers.putIfAbsent("Content-Type", "application/json");
-        String body = GraphQLHunterJson.write(request.get("body"));
+        headers.putIfAbsent("Content-Type", String.valueOf(request.getOrDefault("content_type", "application/json")));
+        String body = request.containsKey("raw_body")
+            ? String.valueOf(request.get("raw_body"))
+            : GraphQLHunterJson.write(request.get("body"));
         headers.put("Content-Length", String.valueOf(body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length));
         StringBuilder builder = new StringBuilder();
         builder.append(request.getOrDefault("method", "POST")).append(' ').append(path).append(" HTTP/1.1\n");
@@ -549,6 +570,15 @@ public final class ReportingService
     private String escapeShell(String text)
     {
         return "'" + (text == null ? "" : text.replace("'", "'\"'\"'")) + "'";
+    }
+
+    private boolean shouldPreserveRawBody(GraphQLHunterModels.ScanRequest request)
+    {
+        String contentType = request.contentType == null ? "" : request.contentType.toLowerCase(Locale.ROOT);
+        return request.batch
+            || contentType.contains("multipart/form-data")
+            || contentType.contains("application/graphql")
+            || (request.rawBody != null && request.rawBody.trim().startsWith("["));
     }
 
     private String escape(String text)

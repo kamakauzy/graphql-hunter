@@ -106,6 +106,27 @@ class ReportingServiceTest
         assertTrue(html.contains("Failed Scanners"));
     }
 
+    @Test
+    void reportPreservesMultipartReplayBody()
+    {
+        GraphQLHunterModels.ScanRequest request = request();
+        request.contentType = "multipart/form-data; boundary=----Boundary";
+        request.rawBody = """
+            ------Boundary
+            Content-Disposition: form-data; name="operations"
+
+            {"query":"mutation Upload($file: Upload!) { upload(file: $file) { ok } }","variables":{"file":null}}
+            ------Boundary--
+            """;
+        GraphQLHunterModels.Finding finding = finding(GraphQLHunterModels.FindingSeverity.HIGH, GraphQLHunterModels.FindingStatus.CONFIRMED);
+
+        String json = new ReportingService().toJsonReport(request, settings(), List.of(finding));
+
+        assertTrue(json.contains("multipart/form-data"));
+        assertTrue(json.contains("operations"));
+        assertTrue(json.contains("raw_body"));
+    }
+
     private GraphQLHunterModels.ScanRequest request()
     {
         GraphQLHunterModels.ScanRequest request = new GraphQLHunterModels.ScanRequest();

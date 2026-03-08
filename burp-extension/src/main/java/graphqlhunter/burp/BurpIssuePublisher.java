@@ -153,8 +153,8 @@ public final class BurpIssuePublisher
         }
         Map<String, String> headers = new LinkedHashMap<>(redactor.redactHeaders(request.headers, java.util.Set.of()));
         headers.putIfAbsent("Host", uri.getAuthority());
-        headers.putIfAbsent("Content-Type", "application/json");
-        String body = GraphQLHunterJson.write(requestPayload(request, finding));
+        headers.putIfAbsent("Content-Type", request.contentType == null || request.contentType.isBlank() ? "application/json" : request.contentType);
+        String body = preservedBody(request, finding);
         headers.put("Content-Length", String.valueOf(body.getBytes(StandardCharsets.UTF_8).length));
 
         StringBuilder builder = new StringBuilder();
@@ -188,6 +188,18 @@ public final class BurpIssuePublisher
             payload.put("operationName", request.operationName);
         }
         return payload;
+    }
+
+    private String preservedBody(GraphQLHunterModels.ScanRequest request, GraphQLHunterModels.Finding finding)
+    {
+        if (request.rawBody != null && !request.rawBody.isBlank()
+            && (request.batch
+            || (request.contentType != null && (request.contentType.toLowerCase(Locale.ROOT).contains("multipart/form-data")
+            || request.contentType.toLowerCase(Locale.ROOT).contains("application/graphql")))))
+        {
+            return redactor.redactText(request.rawBody);
+        }
+        return GraphQLHunterJson.write(requestPayload(request, finding));
     }
 
     private Object tryParseJson(String value)
