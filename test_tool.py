@@ -7,27 +7,33 @@ This tests the tool against a public GraphQL endpoint (if available)
 import subprocess
 import sys
 
-def test_help():
-    """Test that help displays correctly"""
+def check_help():
+    """Return whether help displays correctly."""
     print("[*] Testing help output...")
     result = subprocess.run(
         [sys.executable, "graphql-hunter.py", "--help"],
         capture_output=True,
         text=True
     )
-    
+
     if result.returncode == 0 and "GraphQL Hunter" in result.stdout:
         print("[OK] Help output works")
         return True
-    else:
-        print("[ERROR] Help output failed")
-        return False
 
-def test_dependencies():
-    """Test that all dependencies are installed"""
+    print("[ERROR] Help output failed")
+    return False
+
+
+def test_help():
+    """Pytest entrypoint for help output."""
+    assert check_help()
+
+
+def check_dependencies():
+    """Return whether all dependencies are installed."""
     print("[*] Testing dependencies...")
     deps = ["requests", "colorama", "yaml"]
-    
+
     all_good = True
     for dep in deps:
         try:
@@ -39,8 +45,13 @@ def test_dependencies():
         except ImportError:
             print(f"  [ERROR] {dep} NOT installed - run: pip install -r requirements.txt")
             all_good = False
-    
+
     return all_good
+
+
+def test_dependencies():
+    """Pytest entrypoint for dependency checks."""
+    assert check_dependencies()
 
 def test_public_endpoint():
     """Test against a known public GraphQL endpoint"""
@@ -61,22 +72,22 @@ def main():
     print("GraphQL Hunter - Self Test")
     print("=" * 60)
     print()
-    
+
     # Test dependencies
-    if not test_dependencies():
+    if not check_dependencies():
         print("\n[!] Please install missing dependencies first:")
         print("    pip install -r requirements.txt")
         return 1
-    
+
     print()
-    
+
     # Test help
-    if not test_help():
+    if not check_help():
         return 1
-    
+
     # Show how to test
     test_public_endpoint()
-    
+
     print("=" * 60)
     print("[SUCCESS] GraphQL Hunter is ready to use!")
     print("=" * 60)
