@@ -1,0 +1,33 @@
+name: Release Burp extension
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-burp-extension:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build Burp extension jar
+        working-directory: burp-extension
+        run: ./gradlew clean fatJar test
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: burp-extension/build/libs/GraphQLHunterBurp.jar
+          generate_release_notes: true

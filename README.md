@@ -135,7 +135,9 @@ What it does today:
 
 The Burp addon is **additive**. The existing Python CLI remains the primary standalone workflow and is unchanged.
 
-Build the Burp addon:
+Download the latest prebuilt Burp addon from [GitHub Releases](https://github.com/kamakauzy/graphql-hunter/releases/latest).
+
+Build the Burp addon from source:
 
 ```bash
 cd burp-extension
@@ -151,7 +153,7 @@ burp-extension/build/libs/GraphQLHunterBurp.jar
 Load it in Burp Suite Professional:
 1. Open **Extensions**.
 2. Add a new **Java** extension.
-3. Select `burp-extension/build/libs/GraphQLHunterBurp.jar`.
+3. Select the downloaded release asset, or your local `burp-extension/build/libs/GraphQLHunterBurp.jar`.
 4. Use Burp's HTTP message context menu to send a GraphQL request to the **GraphQL Hunter** tab.
 5. Use the tab's **Auth** and **Import & Discovery** workspaces to validate auth, parse pasted requests, auto-apply imported auth headers, analyze notes, manage runtime-only secrets, export findings with cURL / Burp replay snippets plus executed/skipped/failed scanner coverage, and publish findings as native Burp issues.
 
