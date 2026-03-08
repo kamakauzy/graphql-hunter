@@ -48,6 +48,17 @@ public final class GraphQLHunterPersistence
             {
                 state.scanProfile = state.scanSettings.profileName;
             }
+            if (state.recentRequests == null)
+            {
+                state.recentRequests = new java.util.ArrayList<>();
+            }
+            if (state.recentRequests.isEmpty()
+                && state.lastRequest != null
+                && state.lastRequest.url != null && !state.lastRequest.url.isBlank()
+                && state.lastRequest.query != null && !state.lastRequest.query.isBlank())
+            {
+                state.recentRequests.add(GraphQLHunterModels.RecentRequestEntry.fromScanRequest(state.lastRequest.copy(), java.time.Instant.now().toString()));
+            }
             return state;
         }
         catch (RuntimeException exception)
@@ -70,6 +81,12 @@ public final class GraphQLHunterPersistence
         state.scanProfile = state.scanSettings.profileName;
         GraphQLHunterModels.ExtensionState persisted = new GraphQLHunterModels.ExtensionState();
         persisted.lastRequest = state.lastRequest == null ? new GraphQLHunterModels.ScanRequest() : state.lastRequest.copy();
+        if (state.recentRequests != null)
+        {
+            state.recentRequests.stream()
+                .limit(GraphQLHunterModels.MAX_RECENT_REQUESTS)
+                .forEach(entry -> persisted.recentRequests.add(entry.copy()));
+        }
         persisted.scanProfile = state.scanProfile;
         persisted.scanSettings = state.scanSettings.copy();
         persisted.authSettings = state.authSettings.copy();

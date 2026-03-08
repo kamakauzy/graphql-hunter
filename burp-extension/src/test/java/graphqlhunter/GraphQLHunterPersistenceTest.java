@@ -54,6 +54,26 @@ class GraphQLHunterPersistenceTest
         assertTrue(persisted.contains("/tmp/auth.yaml"));
     }
 
+    @Test
+    void saveAndLoadPreservesRecentRequestHistory()
+    {
+        PersistedObject store = fakeStore();
+        GraphQLHunterPersistence persistence = new GraphQLHunterPersistence(store, null);
+        GraphQLHunterModels.ExtensionState state = new GraphQLHunterModels.ExtensionState();
+        GraphQLHunterModels.RecentRequestEntry entry = new GraphQLHunterModels.RecentRequestEntry();
+        entry.fingerprint = "abc";
+        entry.url = "https://api.example.com/graphql";
+        entry.query = "{ __typename }";
+        entry.lastSeenAt = "2026-03-08T00:00:00Z";
+        state.recentRequests.add(entry);
+
+        persistence.save(state);
+        GraphQLHunterModels.ExtensionState loaded = persistence.load();
+
+        assertEquals(1, loaded.recentRequests.size());
+        assertEquals("abc", loaded.recentRequests.getFirst().fingerprint);
+    }
+
     private PersistedObject fakeStore()
     {
         Map<String, String> strings = new LinkedHashMap<>();

@@ -4,9 +4,16 @@ import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Comparator;
 
 public final class GraphQLHunterModels
 {
+    public static final int MAX_RECENT_REQUESTS = 25;
+
     private GraphQLHunterModels()
     {
     }
@@ -54,12 +61,77 @@ public final class GraphQLHunterModels
             copy.url = url;
             copy.method = method;
             copy.query = query;
-            copy.variables = variables;
+            copy.variables = deepCopyObject(variables);
             copy.operationName = operationName;
             copy.rawBody = rawBody;
             copy.batch = batch;
             copy.headers = new LinkedHashMap<>(headers);
             return copy;
+        }
+    }
+
+    public static final class RecentRequestEntry
+    {
+        public String fingerprint = "";
+        public String source = "manual";
+        public String url = "";
+        public String method = "POST";
+        public String operationName = "";
+        public String query = "";
+        public Object variables = new LinkedHashMap<String, Object>();
+        public Map<String, String> headers = new LinkedHashMap<>();
+        public boolean batch;
+        public String firstSeenAt = "";
+        public String lastSeenAt = "";
+        public int seenCount = 1;
+
+        public RecentRequestEntry copy()
+        {
+            RecentRequestEntry copy = new RecentRequestEntry();
+            copy.fingerprint = fingerprint;
+            copy.source = source;
+            copy.url = url;
+            copy.method = method;
+            copy.operationName = operationName;
+            copy.query = query;
+            copy.variables = deepCopyObject(variables);
+            copy.headers = new LinkedHashMap<>(headers);
+            copy.batch = batch;
+            copy.firstSeenAt = firstSeenAt;
+            copy.lastSeenAt = lastSeenAt;
+            copy.seenCount = seenCount;
+            return copy;
+        }
+
+        public ScanRequest toScanRequest()
+        {
+            ScanRequest request = new ScanRequest();
+            request.source = source;
+            request.url = url;
+            request.method = method;
+            request.query = query;
+            request.variables = deepCopyObject(variables);
+            request.operationName = operationName;
+            request.batch = batch;
+            request.headers = new LinkedHashMap<>(headers);
+            return request;
+        }
+
+        public static RecentRequestEntry fromScanRequest(ScanRequest request, String timestamp)
+        {
+            RecentRequestEntry entry = new RecentRequestEntry();
+            entry.fingerprint = fingerprintFor(request);
+            entry.source = request.source;
+            entry.url = request.url;
+            entry.method = request.method;
+            entry.operationName = request.operationName;
+            entry.query = request.query;
+            entry.variables = deepCopyObject(request.variables);
+            entry.headers = new LinkedHashMap<>(request.headers);
+            entry.batch = request.batch;
+            entry.firstSeenAt = timestamp;
+            entry.lastSeenAt = timestamp;
+            return entry;
         }
     }
 
@@ -122,9 +194,21 @@ public final class GraphQLHunterModels
     public static final class ExtensionState
     {
         public ScanRequest lastRequest = new ScanRequest();
+        public List<RecentRequestEntry> recentRequests = new ArrayList<>();
         public String scanProfile = ScanProfile.STANDARD.name();
         public ScanSettings scanSettings = new ScanSettings();
         public AuthSettings authSettings = new AuthSettings();
+
+        public ExtensionState copy()
+        {
+            ExtensionState copy = new ExtensionState();
+            copy.lastRequest = lastRequest == null ? new ScanRequest() : lastRequest.copy();
+            recentRequests.forEach(entry -> copy.recentRequests.add(entry.copy()));
+            copy.scanProfile = scanProfile;
+            copy.scanSettings = scanSettings == null ? new ScanSettings() : scanSettings.copy();
+            copy.authSettings = authSettings == null ? new AuthSettings() : authSettings.copy();
+            return copy;
+        }
     }
 
     public static final class ScannerSkip
@@ -218,6 +302,115 @@ public final class GraphQLHunterModels
             copy.importedAuthHeaders = new LinkedHashMap<>(importedAuthHeaders);
             copy.runtimeOnlySecrets = new LinkedHashMap<>(runtimeOnlySecrets);
             return copy;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object deepCopyObject(Object value)
+    {
+        if (value == null)
+        {
+            return null;
+        }
+        return GraphQLHunterJson.mapper().convertValue(
+            GraphQLHunterJson.mapper().valueToTree(value),
+            Object.class
+        );
+    }
+
+    public static String fingerprintFor(ScanRequest request)
+    {
+        String input = normalizeMethod(request.method) + "\n"
+            + normalizeUrl(request.url) + "\n"
+            + (request.batch ? "1" : "0") + "\n"
+            + normalizeText(request.operationName) + "\n"
+            + normalizeQuery(request.query) + "\n"
+            + canonicalVariables(request.variables);
+        try
+        {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder();
+            for (byte value : hash)
+            {
+                builder.append(String.format("%02x", value));
+            }
+            return builder.toString();
+        }
+        catch (Exception exception)
+        {
+            return Integer.toHexString(input.hashCode());
+        }
+    }
+
+    private static String normalizeMethod(String method)
+    {
+        return method == null ? "POST" : method.trim().toUpperCase();
+    }
+
+    private static String normalizeUrl(String value)
+    {
+        if (value == null || value.isBlank())
+        {
+            return "";
+        }
+        try
+        {
+            URI uri = new URI(value);
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase();
+            int port = uri.getPort();
+            boolean defaultPort = (port == 80 && "http".equals(scheme)) || (port == 443 && "https".equals(scheme));
+            String authority = port == -1 || defaultPort ? host : host + ":" + port;
+            List<String> params = new ArrayList<>();
+            if (uri.getQuery() != null && !uri.getQuery().isBlank())
+            {
+                for (String pair : uri.getQuery().split("&"))
+                {
+                    params.add(pair);
+                }
+                params.sort(Comparator.naturalOrder());
+            }
+            return scheme + "://" + authority + (uri.getPath() == null ? "" : uri.getPath())
+                + (params.isEmpty() ? "" : "?" + String.join("&", params));
+        }
+        catch (URISyntaxException exception)
+        {
+            return value.trim();
+        }
+    }
+
+    private static String normalizeQuery(String query)
+    {
+        if (query == null)
+        {
+            return "";
+        }
+        return query.replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .strip();
+    }
+
+    private static String normalizeText(String value)
+    {
+        return value == null ? "" : value.trim();
+    }
+
+    private static String canonicalVariables(Object variables)
+    {
+        if (variables == null)
+        {
+            return "";
+        }
+        try
+        {
+            return GraphQLHunterJson.mapper().writeValueAsString(
+                GraphQLHunterJson.mapper().readTree(GraphQLHunterJson.mapper().writeValueAsString(variables))
+            );
+        }
+        catch (Exception exception)
+        {
+            return String.valueOf(variables);
         }
     }
 }

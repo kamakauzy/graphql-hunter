@@ -15,6 +15,8 @@ import graphqlhunter.auth.AuthManager;
 import graphqlhunter.GraphQLHunterPersistence;
 import graphqlhunter.GraphQLHunterScanners;
 import graphqlhunter.burp.BurpIssuePublisher;
+import graphqlhunter.burp.GraphQLRequestCaptureHandler;
+import graphqlhunter.burp.RecentRequestHistory;
 import graphqlhunter.config.ConfigurationLoader;
 import graphqlhunter.burp.GraphQLHunterContextMenuItemsProvider;
 import graphqlhunter.ui.GraphQLHunterTab;
@@ -56,6 +58,7 @@ public final class GraphQLHunterExtension implements BurpExtension
         this.tab = new GraphQLHunterTab(new Actions(), logger);
         api.userInterface().applyThemeToComponent(tab);
         registrations.add(api.userInterface().registerSuiteTab("GraphQL Hunter", tab));
+        registrations.add(api.http().registerHttpHandler(new GraphQLRequestCaptureHandler(this::captureRequest)));
         registrations.add(api.userInterface().registerContextMenuItemsProvider(
             new GraphQLHunterContextMenuItemsProvider(logger, this::importRequest)
         ));
@@ -65,6 +68,7 @@ public final class GraphQLHunterExtension implements BurpExtension
 
     private synchronized void importRequest(ScanRequest request)
     {
+        state.recentRequests = RecentRequestHistory.upsert(state.recentRequests, request);
         state.lastRequest = request.copy();
         if (state.scanSettings == null)
         {
@@ -82,9 +86,26 @@ public final class GraphQLHunterExtension implements BurpExtension
         persistState();
         if (tab != null)
         {
+            List<graphqlhunter.GraphQLHunterModels.RecentRequestEntry> history = state.recentRequests.stream()
+                .map(graphqlhunter.GraphQLHunterModels.RecentRequestEntry::copy)
+                .toList();
+            tab.updateRecentRequests(history, "");
             tab.importRequest(request);
         }
         logger.info("Imported GraphQL request into the GraphQL Hunter tab.");
+    }
+
+    private synchronized void captureRequest(ScanRequest request)
+    {
+        state.recentRequests = RecentRequestHistory.upsert(state.recentRequests, request);
+        persistState();
+        if (tab != null)
+        {
+            List<graphqlhunter.GraphQLHunterModels.RecentRequestEntry> history = state.recentRequests.stream()
+                .map(graphqlhunter.GraphQLHunterModels.RecentRequestEntry::copy)
+                .toList();
+            SwingUtilities.invokeLater(() -> tab.updateRecentRequests(history, "Captured GraphQL request into Recent Requests."));
+        }
     }
 
     private Map<String, String> extractImportedAuthHeaders(Map<String, String> headers)
@@ -131,12 +152,7 @@ public final class GraphQLHunterExtension implements BurpExtension
 
     private synchronized ExtensionState snapshot()
     {
-        ExtensionState snapshot = new ExtensionState();
-        snapshot.lastRequest = state.lastRequest == null ? new ScanRequest() : state.lastRequest.copy();
-        snapshot.scanProfile = state.scanProfile;
-        snapshot.scanSettings = state.scanSettings == null ? new ScanSettings() : state.scanSettings.copy();
-        snapshot.authSettings = state.authSettings == null ? new AuthSettings() : state.authSettings.copy();
-        return snapshot;
+        return state == null ? new ExtensionState() : state.copy();
     }
 
     private final class Actions implements GraphQLHunterTab.GraphQLHunterActions
@@ -152,6 +168,10 @@ public final class GraphQLHunterExtension implements BurpExtension
         {
             synchronized (GraphQLHunterExtension.this)
             {
+                if (newState.recentRequests == null || newState.recentRequests.isEmpty())
+                {
+                    newState.recentRequests = state.recentRequests;
+                }
                 state = newState;
                 persistState();
             }
@@ -174,6 +194,7 @@ public final class GraphQLHunterExtension implements BurpExtension
                     result.timestamp = java.time.Instant.now().toString();
                     synchronized (GraphQLHunterExtension.this)
                     {
+                        state.recentRequests = RecentRequestHistory.upsert(state.recentRequests, request);
                         state.lastRequest = request.copy();
                         state.scanSettings = settings.copy();
                         state.scanProfile = settings.profileName;

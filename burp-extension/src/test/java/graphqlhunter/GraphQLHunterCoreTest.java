@@ -64,6 +64,40 @@ class GraphQLHunterCoreTest
     }
 
     @Test
+    void parsesGraphqlGetRequestFromQueryParameters()
+    {
+        Optional<ScanRequest> parsed = GraphQLHunterCore.parseRequest(
+            "test",
+            "https://api.example.com/graphql?query=query%20Viewer%20%7B%20viewer%20%7B%20id%20%7D%20%7D&operationName=Viewer&variables=%7B%22id%22%3A%22123%22%7D",
+            "GET",
+            Map.of(),
+            ""
+        );
+
+        assertTrue(parsed.isPresent());
+        assertEquals("Viewer", parsed.get().operationName);
+        assertTrue(parsed.get().query.contains("viewer"));
+        assertEquals("123", ((Map<?, ?>) parsed.get().variables).get("id"));
+    }
+
+    @Test
+    void parsesFormEncodedGraphqlPostRequest()
+    {
+        Optional<ScanRequest> parsed = GraphQLHunterCore.parseRequest(
+            "test",
+            "https://api.example.com/graphql",
+            "POST",
+            Map.of("Content-Type", "application/x-www-form-urlencoded"),
+            "query=query%20Viewer%20%7B%20viewer%20%7B%20id%20%7D%20%7D&operationName=Viewer&variables=%7B%22id%22%3A%22123%22%7D"
+        );
+
+        assertTrue(parsed.isPresent());
+        assertEquals("Viewer", parsed.get().operationName);
+        assertTrue(parsed.get().query.contains("viewer"));
+        assertEquals("123", ((Map<?, ?>) parsed.get().variables).get("id"));
+    }
+
+    @Test
     void buildsSchemaAwareOperation()
     {
         Map<String, Object> schema = sampleSchema();

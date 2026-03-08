@@ -9,6 +9,7 @@ import graphqlhunter.GraphQLHunterModels.ScanProfile;
 import graphqlhunter.GraphQLHunterModels.ScanRequest;
 import graphqlhunter.GraphQLHunterModels.ScanSettings;
 import graphqlhunter.GraphQLHunterModels.ScanExecutionResult;
+import graphqlhunter.GraphQLHunterModels.RecentRequestEntry;
 import graphqlhunter.auth.config.AuthConfigurationLoader;
 import graphqlhunter.discovery.AutoDiscover;
 import graphqlhunter.discovery.DiscoveryResult;
@@ -80,6 +81,8 @@ public final class GraphQLHunterTab extends JPanel
     private final JTextField importNameField = new JTextField("request.txt");
     private final JComboBox<String> importFormatCombo = new JComboBox<>(new String[]{"auto", "curl", "raw_http", "json", "yaml", "postman"});
     private final JComboBox<String> importedRequestCombo = new JComboBox<>();
+    private final JComboBox<String> recentRequestCombo = new JComboBox<>();
+    private final JButton applyRecentRequestButton = new JButton("Load Recent");
     private final JTextArea queryArea = new JTextArea();
     private final JTextArea variablesArea = new JTextArea();
     private final JTextArea headersArea = new JTextArea();
@@ -108,6 +111,7 @@ public final class GraphQLHunterTab extends JPanel
     private final FindingTableModel findingTableModel = new FindingTableModel();
     private final JTable findingsTable = new JTable(findingTableModel);
     private final List<ImportedRequest> importedRequests = new ArrayList<>();
+    private final List<RecentRequestEntry> recentRequests = new ArrayList<>();
     private final ReportingService reportingService = new ReportingService();
     private DiscoveryResult latestDiscovery;
     private ScanExecutionResult lastScanResult;
@@ -180,6 +184,7 @@ public final class GraphQLHunterTab extends JPanel
         saveButton.addActionListener(event -> saveState());
         importParseButton.addActionListener(event -> parseImportedContent());
         importApplyButton.addActionListener(event -> applyImportedRequest());
+        applyRecentRequestButton.addActionListener(event -> applyRecentRequest());
         discoveryAnalyzeButton.addActionListener(event -> analyzeDiscovery());
         discoveryApplyButton.addActionListener(event -> applyDiscovery());
         exportJsonButton.addActionListener(event -> exportReport(false));
@@ -202,6 +207,25 @@ public final class GraphQLHunterTab extends JPanel
 
     public void importRequest(ScanRequest request)
     {
+        applyRequestToEditor(request, true, "Imported GraphQL request from Burp.");
+    }
+
+    public void updateRecentRequests(List<RecentRequestEntry> history, String statusMessage)
+    {
+        recentRequests.clear();
+        if (history != null)
+        {
+            history.forEach(entry -> recentRequests.add(entry.copy()));
+        }
+        refreshRecentRequestCombo();
+        if (statusMessage != null && !statusMessage.isBlank())
+        {
+            statusLabel.setText(statusMessage);
+        }
+    }
+
+    private void applyRequestToEditor(ScanRequest request, boolean persist, String statusMessage)
+    {
         if (request == null)
         {
             return;
@@ -214,8 +238,11 @@ public final class GraphQLHunterTab extends JPanel
         variablesArea.setText(renderVariables(request.variables));
         headersArea.setText(renderHeaders(request.headers));
         applyImportedAuthHeaders(request.headers);
-        statusLabel.setText("Imported GraphQL request from Burp.");
-        saveState();
+        statusLabel.setText(statusMessage);
+        if (persist)
+        {
+            saveState();
+        }
     }
 
     private JPanel buildTopPanel()
@@ -261,10 +288,20 @@ public final class GraphQLHunterTab extends JPanel
         gbc.gridx = 0;
         gbc.gridy = 1;
         gbc.weightx = 0;
-        panel.add(new JLabel("URL"), gbc);
+        panel.add(new JLabel("Recent"), gbc);
         gbc.gridx = 1;
-        gbc.gridwidth = 8;
-        gbc.weightx = 1.0;
+        gbc.gridwidth = 2;
+        gbc.weightx = 0.3;
+        panel.add(recentRequestCombo, gbc);
+        gbc.gridx = 3;
+        gbc.gridwidth = 1;
+        gbc.weightx = 0;
+        panel.add(applyRecentRequestButton, gbc);
+        gbc.gridx = 4;
+        panel.add(new JLabel("URL"), gbc);
+        gbc.gridx = 5;
+        gbc.gridwidth = 4;
+        gbc.weightx = 0.7;
         panel.add(urlField, gbc);
         gbc.gridwidth = 1;
 
@@ -502,8 +539,9 @@ public final class GraphQLHunterTab extends JPanel
         }
         if (state.lastRequest != null)
         {
-            importRequest(state.lastRequest);
+            applyRequestToEditor(state.lastRequest, false, "Ready.");
         }
+        updateRecentRequests(state.recentRequests, "");
         try
         {
             String profileName = state.scanSettings != null && state.scanSettings.profileName != null && !state.scanSettings.profileName.isBlank()
@@ -543,6 +581,9 @@ public final class GraphQLHunterTab extends JPanel
         ExtensionState current = actions.currentState();
         ExtensionState state = new ExtensionState();
         state.lastRequest = buildRequestFromInputs();
+        state.recentRequests = current == null || current.recentRequests == null
+            ? new ArrayList<>()
+            : current.recentRequests.stream().map(RecentRequestEntry::copy).toList();
         state.scanSettings = buildScanSettingsFromInputs();
         state.scanProfile = state.scanSettings.profileName;
         state.authSettings = buildAuthSettingsFromInputs(current == null ? null : current.authSettings);
@@ -680,6 +721,17 @@ public final class GraphQLHunterTab extends JPanel
         }
         importRequest(importedRequests.get(selectedIndex).toScanRequest());
         statusLabel.setText("Applied imported request to current scan target.");
+    }
+
+    private void applyRecentRequest()
+    {
+        int selectedIndex = recentRequestCombo.getSelectedIndex();
+        if (selectedIndex < 0 || selectedIndex >= recentRequests.size())
+        {
+            statusLabel.setText("No recent request selected.");
+            return;
+        }
+        applyRequestToEditor(recentRequests.get(selectedIndex).toScanRequest(), true, "Loaded recent GraphQL request into the editor.");
     }
 
     private void analyzeDiscovery()
@@ -1006,6 +1058,22 @@ public final class GraphQLHunterTab extends JPanel
         StringBuilder builder = new StringBuilder();
         values.forEach((key, value) -> builder.append(key).append('=').append(value).append(System.lineSeparator()));
         return builder.toString().trim();
+    }
+
+    private void refreshRecentRequestCombo()
+    {
+        recentRequestCombo.removeAllItems();
+        for (RecentRequestEntry entry : recentRequests)
+        {
+            recentRequestCombo.addItem(formatRecentRequest(entry));
+        }
+    }
+
+    private String formatRecentRequest(RecentRequestEntry entry)
+    {
+        String operation = entry.operationName == null || entry.operationName.isBlank() ? "<anonymous>" : entry.operationName;
+        String method = entry.method == null || entry.method.isBlank() ? "POST" : entry.method;
+        return operation + " | " + method + " " + entry.url + " | " + entry.source + " | seen " + entry.seenCount + "x";
     }
 
     private static final class FindingTableModel extends AbstractTableModel

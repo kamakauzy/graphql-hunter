@@ -11,6 +11,7 @@ import java.net.CookiePolicy;
 import java.net.HttpCookie;
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.URLDecoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
@@ -866,9 +867,27 @@ public final class GraphQLHunterCore
             return Optional.of(request);
         }
 
+        if ("GET".equalsIgnoreCase(request.method))
+        {
+            Optional<GraphQLHunterModels.ScanRequest> fromQuery = parseGraphQlQueryParameters(request);
+            if (fromQuery.isPresent())
+            {
+                return fromQuery;
+            }
+        }
+
         if (body == null || body.isBlank())
         {
             return Optional.empty();
+        }
+
+        if (contentType.toLowerCase(Locale.ROOT).contains("application/x-www-form-urlencoded"))
+        {
+            Optional<GraphQLHunterModels.ScanRequest> fromForm = parseGraphQlFormBody(request, body);
+            if (fromForm.isPresent())
+            {
+                return fromForm;
+            }
         }
 
         try
@@ -903,6 +922,82 @@ public final class GraphQLHunterCore
         }
 
         return Optional.empty();
+    }
+
+    private static Optional<GraphQLHunterModels.ScanRequest> parseGraphQlQueryParameters(GraphQLHunterModels.ScanRequest request)
+    {
+        try
+        {
+            URI uri = URI.create(request.url);
+            Map<String, String> params = parseQueryString(uri.getRawQuery());
+            String query = params.getOrDefault("query", "");
+            if (query.isBlank())
+            {
+                return Optional.empty();
+            }
+            request.query = query;
+            request.operationName = params.getOrDefault("operationName", extractOperationName(query));
+            if (params.containsKey("variables") && !params.get("variables").isBlank())
+            {
+                request.variables = GraphQLHunterJson.mapper().readValue(params.get("variables"), Object.class);
+            }
+            return Optional.of(request);
+        }
+        catch (Exception ignored)
+        {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<GraphQLHunterModels.ScanRequest> parseGraphQlFormBody(GraphQLHunterModels.ScanRequest request, String body)
+    {
+        try
+        {
+            Map<String, String> params = parseQueryString(body);
+            String query = params.getOrDefault("query", "");
+            if (query.isBlank())
+            {
+                return Optional.empty();
+            }
+            request.query = query;
+            request.operationName = params.getOrDefault("operationName", extractOperationName(query));
+            if (params.containsKey("variables") && !params.get("variables").isBlank())
+            {
+                request.variables = GraphQLHunterJson.mapper().readValue(params.get("variables"), Object.class);
+            }
+            return Optional.of(request);
+        }
+        catch (Exception ignored)
+        {
+            return Optional.empty();
+        }
+    }
+
+    private static Map<String, String> parseQueryString(String query)
+    {
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        if (query == null || query.isBlank())
+        {
+            return values;
+        }
+        for (String pair : query.split("&"))
+        {
+            String[] parts = pair.split("=", 2);
+            String key = URLDecoder.decode(parts[0], StandardCharsets.UTF_8);
+            String value = parts.length > 1 ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8) : "";
+            values.put(key, value);
+        }
+        return values;
+    }
+
+    private static String extractOperationName(String query)
+    {
+        if (query == null || query.isBlank())
+        {
+            return "";
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?:query|mutation|subscription)\\s+(\\w+)").matcher(query);
+        return matcher.find() ? matcher.group(1) : "";
     }
 
     public static List<UploadTarget> findUploadTargets(Map<String, Object> schema, Map<String, Object> field)
