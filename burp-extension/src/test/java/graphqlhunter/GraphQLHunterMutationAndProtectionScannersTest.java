@@ -94,6 +94,16 @@ class GraphQLHunterMutationAndProtectionScannersTest
         assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Path Traversal")));
     }
 
+    @Test
+    void fileUploadScannerProbesMultipartUploadScalarSurface()
+    {
+        GraphQLHunterScanners.ScanContext context = context(Map.of(), new MultipartUploadTransport());
+
+        List<Finding> findings = new GraphQLHunterScanners.FileUploadScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Path Traversal")));
+    }
+
     private GraphQLHunterScanners.ScanContext context(Map<String, String> headers, GraphQLHunterCore.SessionAwareTransport transport)
     {
         ScanRequest request = new ScanRequest();
@@ -172,6 +182,13 @@ class GraphQLHunterMutationAndProtectionScannersTest
                                         { "name": "password", "type": { "kind": "SCALAR", "name": "String" } }
                                       ],
                                       "type": { "kind": "OBJECT", "name": "MutationResponse" }
+                                    },
+                                    {
+                                      "name": "uploadBinary",
+                                      "args": [
+                                        { "name": "file", "type": { "kind": "SCALAR", "name": "Upload" } }
+                                      ],
+                                      "type": { "kind": "OBJECT", "name": "MutationResponse" }
                                     }
                                   ]
                                 },
@@ -199,7 +216,8 @@ class GraphQLHunterMutationAndProtectionScannersTest
                                 },
                                 { "kind": "SCALAR", "name": "ID" },
                                 { "kind": "SCALAR", "name": "String" },
-                                { "kind": "SCALAR", "name": "Boolean" }
+                                { "kind": "SCALAR", "name": "Boolean" },
+                                { "kind": "SCALAR", "name": "Upload" }
                               ]
                             }
                           }
@@ -318,7 +336,7 @@ class GraphQLHunterMutationAndProtectionScannersTest
         }
     }
 
-    private static final class RejectingUploadTransport extends ProtectionTransport
+    private static class RejectingUploadTransport extends ProtectionTransport
     {
         @Override
         public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
@@ -339,6 +357,29 @@ class GraphQLHunterMutationAndProtectionScannersTest
                 }
             }
             return super.postJson(url, headers, body);
+        }
+
+        @Override
+        public GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            if (dataBody != null && (dataBody.contains("../../../etc/passwd") || dataBody.contains("payload.php") || dataBody.contains("payload.jsp")))
+            {
+                return response(Map.of("errors", List.of(Map.of("message", "Multipart upload rejected"))), 5L);
+            }
+            return super.executeHttp(method, url, headers, jsonBody, formBody, dataBody);
+        }
+    }
+
+    private static final class MultipartUploadTransport extends RejectingUploadTransport
+    {
+        @Override
+        public GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            if (dataBody != null && dataBody.contains("../../../etc/passwd"))
+            {
+                return response(Map.of("data", Map.of("uploadBinary", Map.of("ok", true))), 5L);
+            }
+            return super.executeHttp(method, url, headers, jsonBody, formBody, dataBody);
         }
     }
 }

@@ -2172,10 +2172,21 @@ public final class GraphQLHunterScanners
                 Map<String, Map<String, Object>> argByName = new LinkedHashMap<>();
                 args.forEach(arg -> argByName.put(String.valueOf(arg.get("name")).toLowerCase(Locale.ROOT), arg));
 
-                boolean uploadScalar = args.stream().anyMatch(arg -> "Upload".equals(GraphQLHunterCore.extractTypeName(GraphQLHunterCore.asMap(arg.get("type")))));
+                List<GraphQLHunterCore.UploadTarget> uploadTargets = GraphQLHunterCore.findUploadTargets(schema, mutation);
+                boolean uploadScalar = !uploadTargets.isEmpty();
                 boolean stringUploadSurface = (argByName.containsKey("filename") || argByName.containsKey("file") || argByName.containsKey("path"))
                     && (argByName.containsKey("content") || argByName.containsKey("text") || argByName.containsKey("data") || argByName.containsKey("body"))
                     && mutationName.toLowerCase(Locale.ROOT).matches(".*(upload|import|file|paste).*");
+
+                if (uploadScalar)
+                {
+                    Finding multipartFinding = probeMultipartUploadTargets(context, schema, mutation, uploadTargets);
+                    if (multipartFinding != null)
+                    {
+                        findings.add(multipartFinding);
+                        continue;
+                    }
+                }
 
                 if (stringUploadSurface)
                 {
@@ -2205,6 +2216,45 @@ public final class GraphQLHunterScanners
                 }
             }
             return findings;
+        }
+
+        private Finding probeMultipartUploadTargets(
+            ScanContext context,
+            Map<String, Object> schema,
+            Map<String, Object> mutation,
+            List<GraphQLHunterCore.UploadTarget> uploadTargets
+        )
+        {
+            String mutationName = String.valueOf(mutation.getOrDefault("name", ""));
+            for (GraphQLHunterCore.UploadTarget target : uploadTargets)
+            {
+                Finding traversal = probeMultipartUploadPayload(
+                    context, schema, mutation, mutationName, target, PATH_TRAVERSAL_PAYLOADS,
+                    "Potential Path Traversal in File Upload",
+                    FindingSeverity.HIGH,
+                    "Upload mutation accepted a traversal-style filename through a multipart Upload argument.",
+                    "Unsafely handled uploaded filenames can allow attackers to write outside the intended directory tree.",
+                    "Normalize and validate upload filenames, reject traversal sequences, and generate server-side file names."
+                );
+                if (traversal != null)
+                {
+                    return traversal;
+                }
+
+                Finding extension = probeMultipartUploadPayload(
+                    context, schema, mutation, mutationName, target, DANGEROUS_EXTENSIONS,
+                    "Potential Dangerous File Type Upload",
+                    FindingSeverity.MEDIUM,
+                    "Upload mutation accepted a dangerous multipart filename extension.",
+                    "Dangerous uploaded file types can become executable or scriptable if later served or processed unsafely.",
+                    "Use a strict allowlist of file types and store uploads outside executable or public web paths."
+                );
+                if (extension != null)
+                {
+                    return extension;
+                }
+            }
+            return null;
         }
 
         private Finding probeStringUploadSurface(
@@ -2307,6 +2357,59 @@ public final class GraphQLHunterScanners
                     finding.requestSnippet = probe.query;
                     finding.evidence.put("mutation", mutationName);
                     finding.evidence.put("filename_argument", filenameArg);
+                    finding.evidence.put("payload", payload);
+                    findingsAddContext(finding, response);
+                    return finding;
+                }
+            }
+            return null;
+        }
+
+        private Finding probeMultipartUploadPayload(
+            ScanContext context,
+            Map<String, Object> schema,
+            Map<String, Object> mutation,
+            String mutationName,
+            GraphQLHunterCore.UploadTarget target,
+            List<String> payloads,
+            String title,
+            FindingSeverity severity,
+            String description,
+            String impact,
+            String remediation
+        )
+        {
+            Operation probe = GraphQLHunterCore.buildOperation(schema, mutation, "mutation", Map.of());
+            if (!probe.testable)
+            {
+                return null;
+            }
+            for (String payload : payloads)
+            {
+                GraphQLResponse response = context.client().query(
+                    probe.query,
+                    probe.variables,
+                    probe.operationName,
+                    Map.of(),
+                    false,
+                    Set.of(),
+                    Map.of(target.variablePath, new GraphQLHunterCore.UploadPart(payload, "upload-test".getBytes(StandardCharsets.UTF_8), "text/plain"))
+                );
+                if (response.hasData() && response.errorsText().isBlank())
+                {
+                    Finding finding = finding(
+                        title,
+                        name(),
+                        severity,
+                        FindingStatus.POTENTIAL,
+                        description,
+                        impact,
+                        remediation
+                    );
+                    finding.proof = probe.query;
+                    finding.requestSnippet = probe.query;
+                    finding.evidence.put("mutation", mutationName);
+                    finding.evidence.put("upload_target", target.variablePath);
                     finding.evidence.put("payload", payload);
                     findingsAddContext(finding, response);
                     return finding;

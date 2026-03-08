@@ -196,7 +196,7 @@ These are the most important next tasks.
 ## 1. Full-fidelity parity gaps
 
 ### Transport/runtime fidelity
-- multipart upload execution parity is still incomplete
+- initial multipart upload execution exists now, but full multipart parity across replay/import/UI paths is still incomplete
 - replay generation is much closer to the Python CLI now, but multipart and batch-specific edge cases still need work
 - proxy-specific parity is not fully addressed
 - some deeper auth retry/refresh semantics and external auth-config ergonomics remain lighter than Python, though auth validation now uses an isolated anonymous baseline instead of sharing the authenticated session
@@ -205,7 +205,7 @@ These are the most important next tasks.
 - some Java scanners are present but still lighter than the Python versions
 - especially worth improving:
   - deeper boolean-differential injection sophistication beyond the current conservative list-count heuristic
-  - deeper file-upload exploitation depth, especially true multipart Upload execution
+  - deeper file-upload exploitation depth, especially fuller multipart Upload replay/import parity and oversized-file behavior
   - deeper CSRF token/cookie handling depth beyond the current origin and token-presence checks
   - mutation fuzzer behavior depth
 

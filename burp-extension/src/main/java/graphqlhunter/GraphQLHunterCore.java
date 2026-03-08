@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public final class GraphQLHunterCore
@@ -326,6 +327,24 @@ public final class GraphQLHunterCore
         public String analysis = "";
     }
 
+    public record UploadPart(String filename, byte[] content, String contentType)
+    {
+        public UploadPart
+        {
+            filename = filename == null || filename.isBlank() ? "upload.bin" : filename;
+            content = content == null ? new byte[0] : content;
+            contentType = contentType == null || contentType.isBlank() ? "application/octet-stream" : contentType;
+        }
+    }
+
+    public static final class UploadTarget
+    {
+        public String variablePath = "";
+        public String argName = "";
+        public String typeName = "Upload";
+        public boolean list;
+    }
+
     public static final class GraphQLClient
     {
         private final String url;
@@ -369,12 +388,12 @@ public final class GraphQLHunterCore
 
         public GraphQLResponse query(String query, Object variables, String operationName)
         {
-            return query(query, variables, operationName, Map.of(), false, Set.of());
+            return query(query, variables, operationName, Map.of(), false, Set.of(), Map.of());
         }
 
         public GraphQLResponse query(String query, Object variables, String operationName, Map<String, String> extraHeaders, boolean bypassAuth)
         {
-            return query(query, variables, operationName, extraHeaders, bypassAuth, Set.of());
+            return query(query, variables, operationName, extraHeaders, bypassAuth, Set.of(), Map.of());
         }
 
         public GraphQLResponse query(
@@ -384,6 +403,19 @@ public final class GraphQLHunterCore
             Map<String, String> extraHeaders,
             boolean bypassAuth,
             Set<String> suppressedHeaders
+        )
+        {
+            return query(query, variables, operationName, extraHeaders, bypassAuth, suppressedHeaders, Map.of());
+        }
+
+        public GraphQLResponse query(
+            String query,
+            Object variables,
+            String operationName,
+            Map<String, String> extraHeaders,
+            boolean bypassAuth,
+            Set<String> suppressedHeaders,
+            Map<String, UploadPart> uploads
         )
         {
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -402,10 +434,25 @@ public final class GraphQLHunterCore
                 {
                     authManager.ensurePrepared(this);
                 }
-                GraphQLResponse response = transport.postJson(url, mergedHeaders(extraHeaders, bypassAuth, suppressedHeaders), payload);
-                if (authManager != null && !bypassAuth && authManager.maybeRefreshAndRetry(this, response))
+                GraphQLResponse response;
+                if (uploads != null && !uploads.isEmpty())
+                {
+                    response = executeMultipart(payload, extraHeaders, bypassAuth, suppressedHeaders, uploads);
+                }
+                else
                 {
                     response = transport.postJson(url, mergedHeaders(extraHeaders, bypassAuth, suppressedHeaders), payload);
+                }
+                if (authManager != null && !bypassAuth && authManager.maybeRefreshAndRetry(this, response))
+                {
+                    if (uploads != null && !uploads.isEmpty())
+                    {
+                        response = executeMultipart(payload, extraHeaders, bypassAuth, suppressedHeaders, uploads);
+                    }
+                    else
+                    {
+                        response = transport.postJson(url, mergedHeaders(extraHeaders, bypassAuth, suppressedHeaders), payload);
+                    }
                 }
                 return response;
             }
@@ -420,6 +467,25 @@ public final class GraphQLHunterCore
                 response.body = exception.getMessage();
                 return response;
             }
+        }
+
+        private GraphQLResponse executeMultipart(
+            Map<String, Object> payload,
+            Map<String, String> extraHeaders,
+            boolean bypassAuth,
+            Set<String> suppressedHeaders,
+            Map<String, UploadPart> uploads
+        ) throws IOException, InterruptedException
+        {
+            if (!(transport instanceof SessionAwareTransport sessionAwareTransport))
+            {
+                throw new IllegalStateException("Current GraphQL transport does not support multipart upload execution.");
+            }
+            MultipartRequest multipart = buildMultipartRequest(payload, uploads);
+            LinkedHashMap<String, String> headers = new LinkedHashMap<>(mergedHeaders(extraHeaders, bypassAuth, suppressedHeaders));
+            headers.entrySet().removeIf(entry -> "content-type".equalsIgnoreCase(entry.getKey()));
+            headers.put("Content-Type", "multipart/form-data; boundary=" + multipart.boundary());
+            return sessionAwareTransport.executeHttp("POST", url, headers, null, null, multipart.body());
         }
 
         public GraphQLResponse batchQuery(List<Map<String, Object>> payload)
@@ -680,6 +746,97 @@ public final class GraphQLHunterCore
             }
             return merged;
         }
+
+        private MultipartRequest buildMultipartRequest(Map<String, Object> payload, Map<String, UploadPart> uploads)
+        {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> operations = GraphQLHunterJson.mapper().convertValue(payload, Map.class);
+            LinkedHashMap<String, List<String>> fileMap = new LinkedHashMap<>();
+            LinkedHashMap<String, UploadPart> orderedUploads = new LinkedHashMap<>(uploads);
+            int index = 0;
+            for (Map.Entry<String, UploadPart> entry : orderedUploads.entrySet())
+            {
+                String key = String.valueOf(index++);
+                setValueAtPath(operations, entry.getKey(), null);
+                fileMap.put(key, List.of(entry.getKey()));
+            }
+
+            String boundary = "----GraphQLHunter" + UUID.randomUUID().toString().replace("-", "");
+            StringBuilder body = new StringBuilder();
+            appendMultipartPart(body, boundary, "operations", null, null, GraphQLHunterJson.write(operations));
+            appendMultipartPart(body, boundary, "map", null, null, GraphQLHunterJson.write(fileMap));
+
+            index = 0;
+            for (UploadPart upload : orderedUploads.values())
+            {
+                appendMultipartPart(
+                    body,
+                    boundary,
+                    String.valueOf(index++),
+                    upload.filename(),
+                    upload.contentType(),
+                    new String(upload.content(), StandardCharsets.UTF_8)
+                );
+            }
+            body.append("--").append(boundary).append("--\r\n");
+            return new MultipartRequest(boundary, body.toString());
+        }
+
+        private void appendMultipartPart(
+            StringBuilder body,
+            String boundary,
+            String fieldName,
+            String filename,
+            String contentType,
+            String value
+        )
+        {
+            body.append("--").append(boundary).append("\r\n");
+            body.append("Content-Disposition: form-data; name=\"").append(fieldName).append("\"");
+            if (filename != null)
+            {
+                body.append("; filename=\"").append(filename.replace("\"", "_")).append("\"");
+            }
+            body.append("\r\n");
+            if (contentType != null)
+            {
+                body.append("Content-Type: ").append(contentType).append("\r\n");
+            }
+            body.append("\r\n");
+            body.append(value == null ? "" : value).append("\r\n");
+        }
+
+        @SuppressWarnings("unchecked")
+        private void setValueAtPath(Map<String, Object> target, String path, Object value)
+        {
+            String[] tokens = path.split("\\.");
+            Object cursor = target;
+            for (int index = 0; index < tokens.length - 1; index++)
+            {
+                String token = tokens[index];
+                if (token.matches("\\d+"))
+                {
+                    cursor = ((List<Object>) cursor).get(Integer.parseInt(token));
+                }
+                else
+                {
+                    cursor = ((Map<String, Object>) cursor).get(token);
+                }
+            }
+            String leaf = tokens[tokens.length - 1];
+            if (leaf.matches("\\d+"))
+            {
+                ((List<Object>) cursor).set(Integer.parseInt(leaf), value);
+            }
+            else
+            {
+                ((Map<String, Object>) cursor).put(leaf, value);
+            }
+        }
+
+        private record MultipartRequest(String boundary, String body)
+        {
+        }
     }
 
     public static Optional<GraphQLHunterModels.ScanRequest> parseRequest(
@@ -746,6 +903,75 @@ public final class GraphQLHunterCore
         }
 
         return Optional.empty();
+    }
+
+    public static List<UploadTarget> findUploadTargets(Map<String, Object> schema, Map<String, Object> field)
+    {
+        List<UploadTarget> targets = new ArrayList<>();
+        for (Map<String, Object> arg : asList(field.get("args")))
+        {
+            targets.addAll(collectUploadTargets(
+                schema,
+                asMap(arg.get("type")),
+                "variables." + arg.get("name"),
+                String.valueOf(arg.get("name")),
+                new LinkedHashSet<>()
+            ));
+        }
+        return targets;
+    }
+
+    private static List<UploadTarget> collectUploadTargets(
+        Map<String, Object> schema,
+        Map<String, Object> typeDef,
+        String variablePath,
+        String argName,
+        Set<String> visited
+    )
+    {
+        if (typeDef == null || typeDef.isEmpty())
+        {
+            return List.of();
+        }
+        String kind = String.valueOf(typeDef.getOrDefault("kind", ""));
+        if ("NON_NULL".equals(kind))
+        {
+            return collectUploadTargets(schema, asMap(typeDef.get("ofType")), variablePath, argName, visited);
+        }
+        if ("LIST".equals(kind))
+        {
+            List<UploadTarget> targets = collectUploadTargets(schema, asMap(typeDef.get("ofType")), variablePath + ".0", argName, visited);
+            targets.forEach(target -> target.list = true);
+            return targets;
+        }
+        String typeName = extractTypeName(typeDef);
+        if ("Upload".equals(typeName))
+        {
+            UploadTarget target = new UploadTarget();
+            target.variablePath = variablePath;
+            target.argName = argName;
+            target.typeName = typeName;
+            return List.of(target);
+        }
+        Map<String, Object> resolved = findType(schema, typeName);
+        if (resolved.isEmpty() || !"INPUT_OBJECT".equals(String.valueOf(resolved.get("kind"))) || visited.contains(typeName))
+        {
+            return List.of();
+        }
+        LinkedHashSet<String> nextVisited = new LinkedHashSet<>(visited);
+        nextVisited.add(typeName);
+        List<UploadTarget> targets = new ArrayList<>();
+        for (Map<String, Object> inputField : asList(resolved.get("inputFields")))
+        {
+            targets.addAll(collectUploadTargets(
+                schema,
+                asMap(inputField.get("type")),
+                variablePath + "." + inputField.get("name"),
+                argName,
+                nextVisited
+            ));
+        }
+        return targets;
     }
 
     public static Operation buildOperation(Map<String, Object> schema, Map<String, Object> field, String operationKind, Map<String, Object> overrides)
@@ -854,6 +1080,7 @@ public final class GraphQLHunterCore
         return switch (typeName)
         {
             case "String", "ID" -> "test";
+            case "Upload" -> "upload-placeholder";
             case "Int" -> 1;
             case "Float" -> 1.0;
             case "Boolean" -> Boolean.TRUE;

@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -178,6 +179,34 @@ class GraphQLHunterCoreTest
         assertFalse(transport.lastHeaders.containsKey("Origin"));
         assertFalse(transport.lastHeaders.containsKey("Referer"));
         assertEquals("application/json", transport.lastHeaders.get("Content-Type"));
+    }
+
+    @Test
+    void queryWithUploadsUsesGraphqlMultipartSpec()
+    {
+        MultipartCaptureTransport transport = new MultipartCaptureTransport();
+        GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+            "https://api.example.com/graphql",
+            Map.of("Content-Type", "application/json"),
+            transport,
+            null
+        );
+
+        client.query(
+            "mutation Upload($file: Upload!) { upload(file: $file) { ok } }",
+            Map.of("file", "upload-placeholder"),
+            "Upload",
+            Map.of(),
+            false,
+            java.util.Set.of(),
+            Map.of("variables.file", new GraphQLHunterCore.UploadPart("proof.txt", "hello".getBytes(StandardCharsets.UTF_8), "text/plain"))
+        );
+
+        assertTrue(transport.lastHeaders.get("Content-Type").contains("multipart/form-data"));
+        assertTrue(transport.lastBody.contains("name=\"operations\""));
+        assertTrue(transport.lastBody.contains("name=\"map\""));
+        assertTrue(transport.lastBody.contains("\"variables.file\""));
+        assertTrue(transport.lastBody.contains("filename=\"proof.txt\""));
     }
 
     @SuppressWarnings("unchecked")
@@ -358,6 +387,38 @@ class GraphQLHunterCoreTest
             response.headers = new LinkedHashMap<>();
             response.elapsedMillis = 5L;
             return response;
+        }
+    }
+
+    private static final class MultipartCaptureTransport implements GraphQLHunterCore.SessionAwareTransport
+    {
+        private Map<String, String> lastHeaders = new LinkedHashMap<>();
+        private String lastBody = "";
+
+        @Override
+        public GraphQLHunterCore.GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            throw new AssertionError("Multipart upload path should use executeHttp, not postJson");
+        }
+
+        @Override
+        public GraphQLHunterCore.GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            lastHeaders = new LinkedHashMap<>(headers);
+            lastBody = dataBody;
+            GraphQLHunterCore.GraphQLResponse response = new GraphQLHunterCore.GraphQLResponse();
+            response.statusCode = 200;
+            response.json = Map.of("data", Map.of("upload", Map.of("ok", true)));
+            response.body = GraphQLHunterJson.write(response.json);
+            response.headers = new LinkedHashMap<>();
+            response.elapsedMillis = 5L;
+            return response;
+        }
+
+        @Override
+        public String getCookie(String name)
+        {
+            return null;
         }
     }
 }
