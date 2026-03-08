@@ -104,18 +104,20 @@ What it does today:
 - adds a **GraphQL Hunter** suite tab
 - imports GraphQL requests from Burp via the context menu
 - carries imported auth headers into the Burp auth workspace automatically
+- supports runtime-only auth secrets that are not persisted with Burp extension state
 - includes Burp-side workspaces for:
   - request editing
   - auth setup and validation
   - pasted import parsing
   - discovery analysis and application
   - JSON / HTML export with redacted replay artifacts
+  - native Burp issue publication
 - runs focused native checks against the imported endpoint:
   - introspection
   - information disclosure
   - auth exposure differentials
   - batching and large-batch review
-  - injection
+  - injection, including query-only time-based delay probes in deep-enabled profiles
   - DoS / depth / complexity
   - aliasing
   - circular query review
@@ -146,7 +148,7 @@ Load it in Burp Suite Professional:
 2. Add a new **Java** extension.
 3. Select `burp-extension/build/libs/GraphQLHunterBurp.jar`.
 4. Use Burp's HTTP message context menu to send a GraphQL request to the **GraphQL Hunter** tab.
-5. Use the tab's **Auth** and **Import & Discovery** workspaces to validate auth, parse pasted requests, auto-apply imported auth headers, analyze notes, and export findings with cURL / Burp replay snippets.
+5. Use the tab's **Auth** and **Import & Discovery** workspaces to validate auth, parse pasted requests, auto-apply imported auth headers, analyze notes, manage runtime-only secrets, export findings with cURL / Burp replay snippets, and publish findings as native Burp issues.
 
 ## Usage Guide
 

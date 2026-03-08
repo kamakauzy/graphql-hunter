@@ -199,12 +199,12 @@ These are the most important next tasks.
 - multipart upload execution parity is still incomplete
 - replay generation is much closer to the Python CLI now, but multipart and batch-specific edge cases still need work
 - proxy-specific parity is not fully addressed
-- some deeper auth retry/refresh semantics remain lighter than Python
+- some deeper auth retry/refresh semantics and external auth-config ergonomics remain lighter than Python
 
 ### Scanner fidelity
 - some Java scanners are present but still lighter than the Python versions
 - especially worth improving:
-  - injection timing/boolean sophistication
+  - injection boolean-differential sophistication
   - JWT expired-token acceptance behavior
   - file upload exploitation depth
   - CSRF token/cookie handling depth
@@ -215,9 +215,8 @@ These are the most important next tasks.
 - coverage/skipped/failed scanner reporting is not yet at Python fidelity
 
 ### UX polish
-- pasted imports now carry auth headers forward, and discovery can promote token-only notes into usable headers, but the workspace still needs refinement
+- pasted imports now carry auth headers forward, discovery can promote token-only notes into usable headers, and runtime-only secrets are exposed in the UI, but the workspace still needs refinement
 - no richer GraphQL message editor/view integration yet
-- no Burp issue publication adapter yet
 - no multi-target/history UX yet
 
 ### Validation / confidence
@@ -230,17 +229,14 @@ These are the most important next tasks.
 If continuing immediately, the best order is:
 
 1. **Strengthen scanner fidelity**
-   - deeper injection parity
+   - deeper boolean-differential injection parity
    - deeper JWT expiry / auth-behavior parity
    - deeper file upload / CSRF / mutation parity
 
-2. **Add Burp-native issue publishing**
-   - optional issue publication adapter for findings
-
-3. **Add parity validation harness**
+2. **Add parity validation harness**
    - fixture-based comparison between Python and Java outputs
 
-4. **Polish import/discovery/export UX**
+3. **Polish import/discovery/export UX**
 
 ---
 

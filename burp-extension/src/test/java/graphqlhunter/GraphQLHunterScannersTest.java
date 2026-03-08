@@ -55,6 +55,25 @@ class GraphQLHunterScannersTest
     }
 
     @Test
+    void injectionLiteScannerFindsTimeBasedSqlProbe()
+    {
+        ScanRequest request = new ScanRequest();
+        request.url = "https://api.example.com/graphql";
+        GraphQLClient client = new GraphQLClient(request.url, Map.of(), new TimingTransport(), null);
+        GraphQLHunterScanners.ScanContext context = new GraphQLHunterScanners.ScanContext(
+            request,
+            ConfigurationLoader.scanConfiguration(new ScanSettings()),
+            client,
+            null,
+            ConfigurationLoader.payloads()
+        );
+
+        List<Finding> findings = new GraphQLHunterScanners.InjectionLiteScanner().scan(context);
+
+        assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Time-Based SQL Injection")));
+    }
+
+    @Test
     void batchingScannerFlagsLargeAcceptedBatches()
     {
         ScanRequest request = new ScanRequest();
@@ -73,7 +92,7 @@ class GraphQLHunterScannersTest
         assertTrue(findings.stream().anyMatch(finding -> finding.title.contains("Large GraphQL Batches Accepted")));
     }
 
-    private static final class FakeTransport implements GraphQLHunterCore.GraphQLTransport
+    private static class FakeTransport implements GraphQLHunterCore.GraphQLTransport
     {
         @Override
         public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
@@ -122,17 +141,21 @@ class GraphQLHunterScannersTest
                             }
                           }
                         }
-                        """));
+                        """), 10L);
                 }
                 if (query.contains("lookup"))
                 {
                     Object variables = map.get("variables");
                     String term = variables instanceof Map<?, ?> valueMap ? String.valueOf(valueMap.get("term")) : "";
+                    if (term.contains("WAITFOR") || term.contains("SLEEP(") || term.contains("PG_SLEEP"))
+                    {
+                        return response(Map.of("data", Map.of("lookup", Map.of("message", "delayed"))), 5200L);
+                    }
                     if (term.contains("UNION SELECT") || term.contains("' OR '1'='1"))
                     {
-                        return response(Map.of("errors", List.of(Map.of("message", "SQLSTATE syntax error near SELECT"))));
+                        return response(Map.of("errors", List.of(Map.of("message", "SQLSTATE syntax error near SELECT"))), 10L);
                     }
-                    return response(Map.of("data", Map.of("lookup", Map.of("message", "ok"))));
+                    return response(Map.of("data", Map.of("lookup", Map.of("message", "ok"))), 100L);
                 }
             }
 
@@ -143,21 +166,44 @@ class GraphQLHunterScannersTest
                 {
                     results.add(Map.of("data", Map.of("__typename", "Query")));
                 }
-                return response(results);
+                return response(results, 10L);
             }
 
-            return response(Map.of("data", Map.of("__typename", "Query")));
+            return response(Map.of("data", Map.of("__typename", "Query")), 10L);
         }
 
-        private GraphQLResponse response(Object body)
+        protected GraphQLResponse response(Object body, long elapsedMillis)
         {
             GraphQLResponse response = new GraphQLResponse();
             response.statusCode = 200;
             response.body = GraphQLHunterJson.write(body);
             response.json = body;
             response.headers = new LinkedHashMap<>();
-            response.elapsedMillis = 10L;
+            response.elapsedMillis = elapsedMillis;
             return response;
+        }
+    }
+
+    private static final class TimingTransport extends FakeTransport
+    {
+        @Override
+        public GraphQLResponse postJson(String url, Map<String, String> headers, Object body)
+        {
+            if (body instanceof Map<?, ?> map)
+            {
+                String query = String.valueOf(map.get("query"));
+                if (query.contains("lookup"))
+                {
+                    Object variables = map.get("variables");
+                    String term = variables instanceof Map<?, ?> valueMap ? String.valueOf(valueMap.get("term")) : "";
+                    if (term.contains("WAITFOR") || term.contains("SLEEP(") || term.contains("PG_SLEEP"))
+                    {
+                        return response(Map.of("data", Map.of("lookup", Map.of("message", "delayed"))), 5200L);
+                    }
+                    return response(Map.of("data", Map.of("lookup", Map.of("message", "ok"))), 100L);
+                }
+            }
+            return super.postJson(url, headers, body);
         }
     }
 }

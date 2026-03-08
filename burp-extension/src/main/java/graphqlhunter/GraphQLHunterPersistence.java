@@ -68,7 +68,12 @@ public final class GraphQLHunterPersistence
             state.authSettings = new GraphQLHunterModels.AuthSettings();
         }
         state.scanProfile = state.scanSettings.profileName;
-        state.authSettings.runtimeOnlySecrets.clear();
-        store.setString(STATE_KEY, GraphQLHunterJson.write(state));
+        GraphQLHunterModels.ExtensionState persisted = new GraphQLHunterModels.ExtensionState();
+        persisted.lastRequest = state.lastRequest == null ? new GraphQLHunterModels.ScanRequest() : state.lastRequest.copy();
+        persisted.scanProfile = state.scanProfile;
+        persisted.scanSettings = state.scanSettings.copy();
+        persisted.authSettings = state.authSettings.copy();
+        persisted.authSettings.runtimeOnlySecrets.clear();
+        store.setString(STATE_KEY, GraphQLHunterJson.write(persisted));
     }
 }

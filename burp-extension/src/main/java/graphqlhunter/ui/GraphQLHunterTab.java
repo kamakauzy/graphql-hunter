@@ -58,6 +58,8 @@ public final class GraphQLHunterTab extends JPanel
         void runScan(ScanRequest request, ScanSettings settings, Consumer<List<Finding>> onSuccess, Consumer<Throwable> onError);
 
         void validateAuth(ScanRequest request, AuthSettings settings, Consumer<String> onSuccess, Consumer<Throwable> onError);
+
+        void publishIssues(ScanRequest request, List<Finding> findings, Consumer<Integer> onSuccess, Consumer<Throwable> onError);
     }
 
     private final GraphQLHunterActions actions;
@@ -78,6 +80,7 @@ public final class GraphQLHunterTab extends JPanel
     private final JTextArea variablesArea = new JTextArea();
     private final JTextArea headersArea = new JTextArea();
     private final JTextArea authVarsArea = new JTextArea();
+    private final JTextArea runtimeSecretsArea = new JTextArea();
     private final JTextArea authStaticHeadersArea = new JTextArea();
     private final JTextArea authImportedHeadersArea = new JTextArea();
     private final JTextArea authValidationArea = new JTextArea();
@@ -97,6 +100,7 @@ public final class GraphQLHunterTab extends JPanel
     private final JButton discoveryApplyButton = new JButton("Apply Discovery");
     private final JButton exportJsonButton = new JButton("Export JSON");
     private final JButton exportHtmlButton = new JButton("Export HTML");
+    private final JButton publishIssuesButton = new JButton("Publish to Burp");
     private final FindingTableModel findingTableModel = new FindingTableModel();
     private final JTable findingsTable = new JTable(findingTableModel);
     private final List<ImportedRequest> importedRequests = new ArrayList<>();
@@ -129,6 +133,8 @@ public final class GraphQLHunterTab extends JPanel
         logArea.setWrapStyleWord(true);
         authVarsArea.setLineWrap(true);
         authVarsArea.setWrapStyleWord(true);
+        runtimeSecretsArea.setLineWrap(true);
+        runtimeSecretsArea.setWrapStyleWord(true);
         authStaticHeadersArea.setLineWrap(true);
         authStaticHeadersArea.setWrapStyleWord(true);
         authImportedHeadersArea.setLineWrap(true);
@@ -172,6 +178,7 @@ public final class GraphQLHunterTab extends JPanel
         discoveryApplyButton.addActionListener(event -> applyDiscovery());
         exportJsonButton.addActionListener(event -> exportReport(false));
         exportHtmlButton.addActionListener(event -> exportReport(true));
+        publishIssuesButton.addActionListener(event -> publishIssues());
         clearButton.addActionListener(event ->
         {
             findingTableModel.setRows(List.of());
@@ -255,6 +262,7 @@ public final class GraphQLHunterTab extends JPanel
 
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         buttonRow.add(scanButton);
+        buttonRow.add(publishIssuesButton);
         buttonRow.add(exportJsonButton);
         buttonRow.add(exportHtmlButton);
         buttonRow.add(saveButton);
@@ -344,17 +352,20 @@ public final class GraphQLHunterTab extends JPanel
         gbc.gridx = 0;
         gbc.weightx = 1.0;
         gbc.gridwidth = 4;
-        gbc.weighty = 0.25;
+        gbc.weighty = 0.2;
         gbc.fill = GridBagConstraints.BOTH;
         panel.add(labeledScroll("Auth Variables (key=value)", authVarsArea, 160), gbc);
 
         gbc.gridy = 3;
-        panel.add(labeledScroll("Static Auth Headers", authStaticHeadersArea, 140), gbc);
+        panel.add(labeledScroll("Runtime-only Secrets (not persisted)", runtimeSecretsArea, 120), gbc);
 
         gbc.gridy = 4;
-        panel.add(labeledScroll("Imported Auth Headers (read-only)", authImportedHeadersArea, 140), gbc);
+        panel.add(labeledScroll("Static Auth Headers", authStaticHeadersArea, 140), gbc);
 
         gbc.gridy = 5;
+        panel.add(labeledScroll("Imported Auth Headers (read-only)", authImportedHeadersArea, 140), gbc);
+
+        gbc.gridy = 6;
         panel.add(labeledScroll("Auth Validation Result", authValidationArea, 160), gbc);
 
         return panel;
@@ -485,6 +496,7 @@ public final class GraphQLHunterTab extends JPanel
             }
             authDetectFailuresCheck.setSelected(state.authSettings.detectFailures);
             authVarsArea.setText(renderKeyValueMap(state.authSettings.authVars));
+            runtimeSecretsArea.setText(renderKeyValueMap(state.authSettings.runtimeOnlySecrets));
             authStaticHeadersArea.setText(renderHeaders(state.authSettings.staticHeaders));
             authImportedHeadersArea.setText(renderHeaders(state.authSettings.importedAuthHeaders));
         }
@@ -721,6 +733,27 @@ public final class GraphQLHunterTab extends JPanel
         }
     }
 
+    private void publishIssues()
+    {
+        List<Finding> findings = findingTableModel.all();
+        if (findings.isEmpty())
+        {
+            statusLabel.setText("No findings available to publish.");
+            return;
+        }
+        publishIssuesButton.setEnabled(false);
+        statusLabel.setText("Publishing findings to Burp...");
+        actions.publishIssues(buildRequestFromInputs(), findings, published ->
+        {
+            statusLabel.setText("Published " + published + " finding(s) to Burp.");
+            publishIssuesButton.setEnabled(true);
+        }, throwable ->
+        {
+            statusLabel.setText("Issue publication failed: " + throwable.getMessage());
+            publishIssuesButton.setEnabled(true);
+        });
+    }
+
     private AuthSettings buildAuthSettingsFromInputs(AuthSettings existing)
     {
         AuthSettings settings = existing == null ? new AuthSettings() : existing.copy();
@@ -728,6 +761,7 @@ public final class GraphQLHunterTab extends JPanel
         settings.profileName = authProfileCombo.getSelectedItem() == null ? "" : String.valueOf(authProfileCombo.getSelectedItem());
         settings.detectFailures = authDetectFailuresCheck.isSelected();
         settings.authVars = parseKeyValueMap(authVarsArea.getText());
+        settings.runtimeOnlySecrets = parseKeyValueMap(runtimeSecretsArea.getText());
         settings.staticHeaders = parseHeaders(authStaticHeadersArea.getText());
         settings.importedAuthHeaders = parseHeaders(authImportedHeadersArea.getText());
         return settings;

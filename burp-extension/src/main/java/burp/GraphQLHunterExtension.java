@@ -13,6 +13,7 @@ import graphqlhunter.GraphQLHunterCore;
 import graphqlhunter.auth.AuthManager;
 import graphqlhunter.GraphQLHunterPersistence;
 import graphqlhunter.GraphQLHunterScanners;
+import graphqlhunter.burp.BurpIssuePublisher;
 import graphqlhunter.config.ConfigurationLoader;
 import graphqlhunter.burp.GraphQLHunterContextMenuItemsProvider;
 import graphqlhunter.ui.GraphQLHunterTab;
@@ -35,6 +36,7 @@ public final class GraphQLHunterExtension implements BurpExtension
     private GraphQLHunterPersistence persistence;
     private ExtensionState state;
     private GraphQLHunterTab tab;
+    private BurpIssuePublisher issuePublisher;
     private ExecutorService executorService;
 
     @Override
@@ -44,6 +46,7 @@ public final class GraphQLHunterExtension implements BurpExtension
         this.logger = new GraphQLHunterLogger(api.logging());
         this.persistence = new GraphQLHunterPersistence(api.persistence().extensionData(), logger);
         this.state = persistence.load();
+        this.issuePublisher = new BurpIssuePublisher(api.siteMap(), logger);
         this.executorService = Executors.newVirtualThreadPerTaskExecutor();
 
         api.extension().setName("GraphQL Hunter");
@@ -210,6 +213,24 @@ public final class GraphQLHunterExtension implements BurpExtension
                 catch (Throwable throwable)
                 {
                     logger.error("Auth validation failed.", throwable);
+                    SwingUtilities.invokeLater(() -> onError.accept(throwable));
+                }
+            });
+        }
+
+        @Override
+        public void publishIssues(ScanRequest request, List<Finding> findings, Consumer<Integer> onSuccess, Consumer<Throwable> onError)
+        {
+            executorService.submit(() ->
+            {
+                try
+                {
+                    int published = issuePublisher.publish(request, findings);
+                    SwingUtilities.invokeLater(() -> onSuccess.accept(published));
+                }
+                catch (Throwable throwable)
+                {
+                    logger.error("Burp issue publication failed.", throwable);
                     SwingUtilities.invokeLater(() -> onError.accept(throwable));
                 }
             });

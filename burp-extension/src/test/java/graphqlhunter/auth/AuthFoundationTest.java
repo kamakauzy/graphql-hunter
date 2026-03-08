@@ -3,12 +3,16 @@ package graphqlhunter.auth;
 import graphqlhunter.GraphQLHunterModels;
 import graphqlhunter.GraphQLHunterCore;
 import graphqlhunter.auth.config.AuthConfigurationLoader;
+import graphqlhunter.auth.config.AuthProfileDefinition;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AuthFoundationTest
@@ -31,6 +35,32 @@ class AuthFoundationTest
         AuthManager manager = AuthManager.fromState(settings, null);
 
         assertEquals("Bearer secret-token", manager.requestHeaders().get("Authorization"));
+    }
+
+    @Test
+    void runtimeOnlySecretsOverridePersistedBearerValues()
+    {
+        GraphQLHunterModels.AuthSettings settings = new GraphQLHunterModels.AuthSettings();
+        settings.mode = "profile";
+        settings.profileName = "bearer";
+        settings.authVars.put("access_token", "persisted-token");
+        settings.runtimeOnlySecrets.put("access_token", "runtime-token");
+
+        AuthManager manager = AuthManager.fromState(settings, null);
+
+        assertEquals("Bearer runtime-token", manager.requestHeaders().get("Authorization"));
+    }
+
+    @Test
+    void missingBearerTokenFailsFast()
+    {
+        GraphQLHunterModels.AuthSettings settings = new GraphQLHunterModels.AuthSettings();
+        settings.mode = "profile";
+        settings.profileName = "bearer";
+
+        AuthManager manager = AuthManager.fromState(settings, null);
+
+        assertThrows(IllegalStateException.class, manager::requestHeaders);
     }
 
     @Test
@@ -141,7 +171,85 @@ class AuthFoundationTest
         assertEquals("Bearer oauth-token", manager.requestHeaders().get("Authorization"));
     }
 
-    private static final class FakeSessionTransport implements GraphQLHunterCore.SessionAwareTransport
+    @Test
+    void oauthClientCredentialsSupportsBasicAuthMethod()
+    {
+        AuthProfileDefinition definition = new AuthProfileDefinition();
+        definition.type = "oauth2_client_credentials";
+        definition.tokenUrl = "https://issuer.example.com/oauth/token";
+        definition.authMethod = "basic";
+        definition.clientIdVar = "client_id";
+        definition.clientSecretVar = "client_secret";
+
+        RecordingTransport transport = new RecordingTransport();
+        GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+            "https://api.example.com/graphql",
+            Map.of(),
+            transport,
+            null
+        );
+        OAuth2Provider provider = new OAuth2Provider(definition, new LinkedHashMap<>(Map.of(
+            "client_id", "cid",
+            "client_secret", "sec"
+        )));
+
+        provider.prepare(new AuthExecutionContext(client, null));
+
+        assertTrue(transport.lastHeaders.containsKey("Authorization"));
+        assertTrue(transport.lastHeaders.get("Authorization").startsWith("Basic "));
+        assertTrue(!transport.lastForm.containsKey("client_secret"));
+        assertEquals("Bearer oauth-token", provider.headersForRequest().get("Authorization"));
+    }
+
+    @Test
+    void oauthAuthCodeMissingCodeFailsFast()
+    {
+        AuthProfileDefinition definition = new AuthProfileDefinition();
+        definition.type = "oauth2_auth_code";
+        definition.tokenUrl = "https://issuer.example.com/oauth/token";
+        definition.authorizeUrl = "https://issuer.example.com/authorize";
+        definition.redirectUri = "http://localhost/callback";
+        definition.clientIdVar = "client_id";
+
+        OAuth2Provider provider = new OAuth2Provider(definition, new LinkedHashMap<>(Map.of("client_id", "cid")));
+
+        IllegalStateException exception = assertThrows(
+            IllegalStateException.class,
+            () -> provider.prepare(new AuthExecutionContext(new GraphQLHunterCore.GraphQLClient(
+                "https://api.example.com/graphql",
+                Map.of(),
+                new RecordingTransport(),
+                null
+            ), null))
+        );
+        assertTrue(exception.getMessage().contains("Missing auth code"));
+    }
+
+    @Test
+    void oauthDeviceCodePollsUntilTokenAvailable()
+    {
+        AuthProfileDefinition definition = new AuthProfileDefinition();
+        definition.type = "oauth2_device_code";
+        definition.tokenUrl = "https://issuer.example.com/oauth/token";
+        definition.deviceAuthorizationUrl = "https://issuer.example.com/oauth/device/code";
+        definition.clientIdVar = "client_id";
+
+        DeviceCodeTransport transport = new DeviceCodeTransport();
+        GraphQLHunterCore.GraphQLClient client = new GraphQLHunterCore.GraphQLClient(
+            "https://api.example.com/graphql",
+            Map.of(),
+            transport,
+            null
+        );
+        OAuth2Provider provider = new OAuth2Provider(definition, new LinkedHashMap<>(Map.of("client_id", "cid")));
+
+        provider.prepare(new AuthExecutionContext(client, null));
+
+        assertTrue(transport.tokenPolls.get() >= 2);
+        assertEquals("Bearer oauth-token", provider.headersForRequest().get("Authorization"));
+    }
+
+    private static class FakeSessionTransport implements GraphQLHunterCore.SessionAwareTransport
     {
         private final Map<String, String> cookies = new LinkedHashMap<>();
 
@@ -186,12 +294,12 @@ class AuthFoundationTest
             return cookies.get(name);
         }
 
-        private GraphQLHunterCore.GraphQLResponse response(Object body)
+        protected GraphQLHunterCore.GraphQLResponse response(Object body)
         {
             return response(body, new LinkedHashMap<>());
         }
 
-        private GraphQLHunterCore.GraphQLResponse response(Object body, Map<String, java.util.List<String>> headers)
+        protected GraphQLHunterCore.GraphQLResponse response(Object body, Map<String, java.util.List<String>> headers)
         {
             GraphQLHunterCore.GraphQLResponse response = new GraphQLHunterCore.GraphQLResponse();
             response.statusCode = 200;
@@ -200,6 +308,52 @@ class AuthFoundationTest
             response.headers = new LinkedHashMap<>(headers);
             response.elapsedMillis = 5L;
             return response;
+        }
+    }
+
+    private static final class RecordingTransport extends FakeSessionTransport
+    {
+        private final Map<String, String> lastHeaders = new LinkedHashMap<>();
+        private final Map<String, String> lastForm = new LinkedHashMap<>();
+
+        @Override
+        public GraphQLHunterCore.GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            lastHeaders.clear();
+            lastHeaders.putAll(headers);
+            lastForm.clear();
+            if (formBody != null)
+            {
+                lastForm.putAll(formBody);
+            }
+            return super.executeHttp(method, url, headers, jsonBody, formBody, dataBody);
+        }
+    }
+
+    private static final class DeviceCodeTransport extends FakeSessionTransport
+    {
+        private final AtomicInteger tokenPolls = new AtomicInteger();
+
+        @Override
+        public GraphQLHunterCore.GraphQLResponse executeHttp(String method, String url, Map<String, String> headers, Object jsonBody, Map<String, String> formBody, String dataBody)
+        {
+            if (url.contains("/oauth/token"))
+            {
+                int poll = tokenPolls.incrementAndGet();
+                if (poll == 1)
+                {
+                    return response(Map.of(
+                        "error", "authorization_pending",
+                        "error_description", "Still waiting for user verification"
+                    ), new LinkedHashMap<>());
+                }
+                return response(Map.of(
+                    "access_token", "oauth-token",
+                    "token_type", "Bearer",
+                    "expires_in", 3600
+                ), new LinkedHashMap<>());
+            }
+            return super.executeHttp(method, url, headers, jsonBody, formBody, dataBody);
         }
     }
 }

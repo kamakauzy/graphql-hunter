@@ -19,6 +19,10 @@ public final class BearerTokenProvider implements AuthProvider
     @Override
     public Map<String, String> headersForRequest()
     {
+        if (token == null || token.isBlank())
+        {
+            throw new IllegalStateException("Bearer token missing. Provide the configured access token variable before scanning.");
+        }
         return Map.of(headerName, prefix + token);
     }
 

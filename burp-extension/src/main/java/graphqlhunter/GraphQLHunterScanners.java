@@ -548,6 +548,15 @@ public final class GraphQLHunterScanners
                     {
                         break;
                     }
+                    if ("query".equals(operationKind) && context.configuration().enableDeepInjection)
+                    {
+                        Finding timingFinding = emitTimeBasedFinding(context, field, operationKind, schema, argName, baseline);
+                        if (timingFinding != null)
+                        {
+                            findings.add(timingFinding);
+                            break;
+                        }
+                    }
                 }
 
                 if (findings.size() >= 3)
@@ -603,6 +612,124 @@ public final class GraphQLHunterScanners
                 }
             }
             return false;
+        }
+
+        private Finding emitTimeBasedFinding(
+            ScanContext context,
+            Map<String, Object> field,
+            String operationKind,
+            Map<String, Object> schema,
+            String argName,
+            Operation baseline
+        )
+        {
+            List<Long> baselineSamples = collectTimingSamples(context, baseline, 3);
+            if (baselineSamples.isEmpty() || isTimingBaselineNoisy(baselineSamples))
+            {
+                return null;
+            }
+
+            Operation control = GraphQLHunterCore.buildOperation(schema, field, operationKind, Map.of(argName, "__gqlh_control__"));
+            List<Long> controlSamples = collectTimingSamples(context, control, 2);
+            long baselineMedian = median(baselineSamples);
+            long controlMedian = controlSamples.isEmpty() ? baselineMedian : median(controlSamples);
+
+            for (String payload : context.payloads().sqlInjection.timeBased)
+            {
+                Operation probe = GraphQLHunterCore.buildOperation(schema, field, operationKind, Map.of(argName, payload));
+                if (!probe.testable)
+                {
+                    continue;
+                }
+                List<Long> payloadSamples = collectTimingSamples(context, probe, 3);
+                if (payloadSamples.isEmpty())
+                {
+                    continue;
+                }
+                long payloadMedian = median(payloadSamples);
+                long expectedDelay = expectedDelayMillis(payload);
+                long delta = payloadMedian - Math.max(baselineMedian, controlMedian);
+                long threshold = Math.max(2500L, expectedDelay / 2);
+                long elevatedSamples = payloadSamples.stream().filter(value -> value >= baselineMedian + threshold).count();
+                if (delta >= threshold && controlMedian - baselineMedian < 1000L && elevatedSamples >= 2)
+                {
+                    Finding finding = finding(
+                        "Potential Time-Based SQL Injection Vulnerability",
+                        name(),
+                        FindingSeverity.HIGH,
+                        FindingStatus.POTENTIAL,
+                        "A time-based SQL injection payload produced a consistent response delay that was not present in baseline or control requests.",
+                        "Time-based delays can indicate that attacker-controlled input is reaching database execution paths even when no error details are exposed.",
+                        "Use parameterized queries, validate input, and reject payloads that alter database execution timing."
+                    );
+                    finding.proof = probe.query;
+                    finding.requestSnippet = probe.query;
+                    finding.evidence.put("field", field.get("name"));
+                    finding.evidence.put("argument", argName);
+                    finding.evidence.put("payload", payload);
+                    finding.evidence.put("baseline_samples_ms", baselineSamples);
+                    finding.evidence.put("control_samples_ms", controlSamples);
+                    finding.evidence.put("payload_samples_ms", payloadSamples);
+                    finding.evidence.put("baseline_median_ms", baselineMedian);
+                    finding.evidence.put("payload_median_ms", payloadMedian);
+                    finding.evidence.put("control_median_ms", controlMedian);
+                    finding.evidence.put("delta_ms", delta);
+                    return finding;
+                }
+            }
+            return null;
+        }
+
+        private List<Long> collectTimingSamples(ScanContext context, Operation operation, int count)
+        {
+            if (operation == null || !operation.testable)
+            {
+                return List.of();
+            }
+            List<Long> samples = new ArrayList<>();
+            for (int index = 0; index < count; index++)
+            {
+                GraphQLResponse response = context.client().query(operation.query, operation.variables, operation.operationName);
+                if (response.statusCode == 0)
+                {
+                    return List.of();
+                }
+                samples.add(response.elapsedMillis);
+            }
+            return samples;
+        }
+
+        private boolean isTimingBaselineNoisy(List<Long> samples)
+        {
+            long min = samples.stream().mapToLong(Long::longValue).min().orElse(0L);
+            long max = samples.stream().mapToLong(Long::longValue).max().orElse(0L);
+            return max - min > 1500L;
+        }
+
+        private long median(List<Long> samples)
+        {
+            List<Long> ordered = new ArrayList<>(samples);
+            ordered.sort(Long::compareTo);
+            return ordered.get(ordered.size() / 2);
+        }
+
+        private long expectedDelayMillis(String payload)
+        {
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(sleep|pg_sleep)\\((\\d+)\\)|delay '\\d+:\\d+:(\\d+)'", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(payload == null ? "" : payload);
+            if (matcher.find())
+            {
+                String seconds = matcher.group(2) != null ? matcher.group(2) : matcher.group(3);
+                try
+                {
+                    return Long.parseLong(seconds) * 1000L;
+                }
+                catch (NumberFormatException ignored)
+                {
+                    return 5000L;
+                }
+            }
+            return 5000L;
         }
     }
 

@@ -17,6 +17,10 @@ public final class ApiKeyProvider implements AuthProvider
     @Override
     public Map<String, String> headersForRequest()
     {
+        if (value == null || value.isBlank())
+        {
+            throw new IllegalStateException("API key missing. Provide the configured api_key variable before scanning.");
+        }
         return Map.of(headerName, value);
     }
 

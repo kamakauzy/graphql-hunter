@@ -66,11 +66,11 @@ public final class AuthManager
             case "bearer" -> new BearerTokenProvider(
                 definition.headerName,
                 definition.prefix,
-                settings.authVars.getOrDefault(definition.var == null || definition.var.isBlank() ? "access_token" : definition.var, "")
+                mergedVariables(settings).getOrDefault(definition.var == null || definition.var.isBlank() ? "access_token" : definition.var, "")
             );
             case "api_key" -> new ApiKeyProvider(
                 definition.headerName,
-                settings.authVars.getOrDefault(definition.var == null || definition.var.isBlank() ? "api_key" : definition.var, "")
+                mergedVariables(settings).getOrDefault(definition.var == null || definition.var.isBlank() ? "api_key" : definition.var, "")
             );
             case "oauth2_client_credentials", "oauth2_refresh_token", "oauth2_auth_code", "oauth2_device_code" -> new OAuth2Provider(definition, mergedVariables(settings));
             case "scripted" -> new ScriptedProvider(definition, mergedVariables(settings));
