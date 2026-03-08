@@ -107,9 +107,9 @@ What it does today:
 - supports runtime-only auth secrets that are not persisted with Burp extension state
 - validates auth against an isolated anonymous baseline instead of reusing the authenticated Burp session
 - includes Burp-side workspaces for:
-  - request editing
+  - request editing, including operation-name preservation
   - auth setup and validation
-  - pasted import parsing
+  - pasted import parsing with content-based auto-detect for JSON/Postman/YAML
   - discovery analysis and application
   - JSON / HTML export with redacted replay artifacts and real scan coverage metadata
   - native Burp issue publication

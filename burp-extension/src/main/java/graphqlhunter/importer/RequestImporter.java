@@ -183,6 +183,32 @@ public final class RequestImporter
     public static List<ImportedRequest> autoDetect(String fileName, String content)
     {
         String lowerName = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT);
+        String trimmed = content == null ? "" : content.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("["))
+        {
+            try
+            {
+                JsonNode node = GraphQLHunterJson.mapper().readTree(content);
+                if ((node.has("info") && node.path("info").has("schema")) || node.has("item"))
+                {
+                    return fromPostmanCollectionContent(content);
+                }
+                return List.of(fromJsonContent(content));
+            }
+            catch (Exception ignored)
+            {
+            }
+        }
+        if (looksLikeYamlRequest(content))
+        {
+            try
+            {
+                return List.of(fromYamlContent(content));
+            }
+            catch (Exception ignored)
+            {
+            }
+        }
         if (lowerName.endsWith(".json"))
         {
             try
@@ -211,6 +237,11 @@ public final class RequestImporter
             return List.of(fromRawHttp(content));
         }
         throw new IllegalArgumentException("Unsupported request format");
+    }
+
+    public static String extractOperationNameFromQuery(String query)
+    {
+        return extractOperationName(query);
     }
 
     private static void extractPostmanRequests(JsonNode item, String folderPath, List<ImportedRequest> requests)
@@ -330,6 +361,16 @@ public final class RequestImporter
         }
         Matcher matcher = OPERATION_NAME_PATTERN.matcher(query);
         return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private static boolean looksLikeYamlRequest(String content)
+    {
+        String lowered = content == null ? "" : content.toLowerCase(Locale.ROOT);
+        return lowered.contains("query:")
+            || lowered.contains("url:")
+            || lowered.contains("method:")
+            || lowered.contains("variables:")
+            || lowered.contains("headers:");
     }
 
     private static String text(JsonNode node, String field, String defaultValue)

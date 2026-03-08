@@ -76,6 +76,59 @@ class RequestImporterTest
     }
 
     @Test
+    void autoDetectsJsonRequestContentWithoutJsonExtension()
+    {
+        List<ImportedRequest> requests = RequestImporter.autoDetect(
+            "request.txt",
+            """
+            {
+              "url": "https://api.example.com/graphql",
+              "method": "POST",
+              "query": "query Viewer { viewer { id } }",
+              "operationName": "Viewer"
+            }
+            """
+        );
+
+        assertEquals(1, requests.size());
+        assertEquals("Viewer", requests.getFirst().operationName);
+        assertEquals("https://api.example.com/graphql", requests.getFirst().url);
+    }
+
+    @Test
+    void autoDetectsPostmanCollectionWithoutJsonExtension()
+    {
+        List<ImportedRequest> requests = RequestImporter.autoDetect(
+            "request.txt",
+            """
+            {
+              "info": { "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+              "item": [
+                {
+                  "name": "Lookup",
+                  "request": {
+                    "method": "POST",
+                    "url": {
+                      "protocol": "https",
+                      "host": ["api","example","com"],
+                      "path": ["graphql"]
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\\"query\\":\\"query Viewer { viewer { id } }\\"}"
+                    }
+                  }
+                }
+              ]
+            }
+            """
+        );
+
+        assertEquals(1, requests.size());
+        assertEquals("Lookup", requests.getFirst().name);
+    }
+
+    @Test
     void parsesRawHttpRequest()
     {
         ImportedRequest request = RequestImporter.fromRawHttp("""

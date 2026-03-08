@@ -68,6 +68,7 @@ public final class GraphQLHunterTab extends JPanel
     private final JTextField sourceField = new JTextField();
     private final JTextField urlField = new JTextField();
     private final JTextField methodField = new JTextField();
+    private final JTextField operationNameField = new JTextField();
     private final JTextField delayField = new JTextField();
     private final JComboBox<ScanProfile> profileCombo = new JComboBox<>(ScanProfile.values());
     private final JCheckBox safeModeCheck = new JCheckBox("Safe mode");
@@ -205,6 +206,7 @@ public final class GraphQLHunterTab extends JPanel
         sourceField.setText(request.source);
         urlField.setText(request.url);
         methodField.setText(request.method);
+        operationNameField.setText(request.operationName == null ? "" : request.operationName);
         queryArea.setText(request.query == null ? "" : request.query);
         variablesArea.setText(renderVariables(request.variables));
         headersArea.setText(renderHeaders(request.headers));
@@ -304,18 +306,32 @@ public final class GraphQLHunterTab extends JPanel
         JPanel panel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(4, 4, 4, 4);
-        gbc.fill = GridBagConstraints.BOTH;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
-        gbc.weighty = 0.5;
 
         gbc.gridx = 0;
         gbc.gridy = 0;
+        panel.add(new JLabel("Operation Name"), gbc);
+
+        gbc.gridx = 1;
+        gbc.gridy = 0;
+        gbc.gridwidth = 2;
+        panel.add(operationNameField, gbc);
+
+        gbc.gridwidth = 1;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weighty = 0.5;
+
+        gbc.gridx = 0;
+        gbc.gridy = 1;
         panel.add(labeledScroll("GraphQL Query", queryArea, 220), gbc);
 
         gbc.gridx = 1;
+        gbc.gridy = 1;
         panel.add(labeledScroll("Variables (JSON)", variablesArea, 220), gbc);
 
         gbc.gridx = 2;
+        gbc.gridy = 1;
         panel.add(labeledScroll("Headers", headersArea, 220), gbc);
 
         return panel;
@@ -559,7 +575,9 @@ public final class GraphQLHunterTab extends JPanel
         request.url = urlField.getText().trim();
         request.method = methodField.getText().isBlank() ? "POST" : methodField.getText().trim().toUpperCase(Locale.ROOT);
         request.query = queryArea.getText();
-        request.operationName = "";
+        request.operationName = operationNameField.getText().isBlank()
+            ? RequestImporter.extractOperationNameFromQuery(request.query)
+            : operationNameField.getText().trim();
         request.headers = parseHeaders(headersArea.getText());
         request.variables = parseVariables(variablesArea.getText());
         return request;
